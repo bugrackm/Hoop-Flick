@@ -6,10 +6,13 @@ Hoop Flick is a mobile-first HTML5 basketball game built around quick, skill-bas
 
 No installation is required:
 
-### [Play Hoop Flick in your browser](https://bugrackm.github.io/Hoop-Flick/)
+### [▶ Play Hoop Flick in your browser](https://bugrackm.github.io/Hoop-Flick/)
 
-The game works with mouse and touch controls. For the best experience on my experiences, playing with a mouse is more great. Even so, in a mobile web browser has a good experince. 
-You can play both of them.
+<p align="center">
+  <img src="docs/media/gameplay.gif" alt="Hoop Flick gameplay: drag-and-release shots scoring perfect swishes" width="300">
+</p>
+
+The game works with mouse and touch controls. In my experience a mouse gives the most precise shots, but it plays well in mobile browsers too.
 
 ## How to Play
 
