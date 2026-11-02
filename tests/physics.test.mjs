@@ -1,0 +1,401 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadPhysics, loadGame } from './helpers/game-harness.mjs';
+
+const physics = loadPhysics();
+const game = loadGame();
+const params = game.evaluate('FLIGHT_PARAMS');
+const dotSteps = game.evaluate('TRAJECTORY_DOT_STEPS');
+const dt = physics.FIXED_DT;
+
+function pull(x, y) {
+  return game.evaluate(`drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: ${-x}, pointerCurrentY: ${-y} }; getPullVector()`);
+}
+
+function launch(x, y) {
+  return physics.getLaunchVelocity(pull(x, y), params);
+}
+
+function seededRandom() {
+  let seed = 0x12345678;
+  return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+}
+
+test('physics loads without DOM, is frozen, and never mutates flight inputs', () => {
+  assert.ok(Object.isFrozen(physics));
+  assert.equal(dt, 1 / 120);
+  const body = Object.freeze({ x: 210, y: 500, vx: 320, vy: -900 });
+  const config = Object.freeze({ ...params });
+  const next = physics.stepBallFlight(body, config, dt);
+  assert.equal(next.vx, body.vx * Math.pow(params.airDrag, dt * 60));
+  assert.equal(next.vy, (body.vy + params.gravity * dt) * Math.pow(params.airDrag, dt * 60));
+  assert.equal(next.x, body.x + next.vx * dt);
+  assert.equal(next.y, body.y + next.vy * dt);
+  assert.notEqual(next, body);
+});
+
+for (const [name, x, y, startX, bounces] of [
+  ['straight', 0, -90, 210, false],
+  ['maximum power', 0, -140, 210, false],
+  ['right wall bounce', 110, -90, 300, true],
+  ['left wall bounce', -110, -90, 120, true]
+]) {
+  test(`preview === real fixed-step flight: ${name}`, () => {
+    const p = pull(x, y);
+    const velocity = physics.getLaunchVelocity(p, params);
+    const start = Object.freeze({ x: startX, y: 590 });
+    const prediction = physics.predictTrajectory(start, velocity, params, {
+      dotSteps, pointCount: Math.round(7 + p.ratio * 6), maxPoints: 15
+    });
+    let body = { ...start, ...velocity };
+    const actualBounces = [];
+    for (let step = 1; step <= prediction.points.at(-1).step; step++) {
+      body = physics.stepBallFlight(body, params, dt);
+      if (body.wallHit) actualBounces.push(step);
+      const point = prediction.points.find(point => point.step === step);
+      if (point) {
+        assert.equal(point.x, body.x);
+        assert.equal(point.y, body.y);
+        assert.equal(point.step % dotSteps, 0);
+      }
+    }
+    assert.equal(prediction.wallBounces.length > 0, bounces);
+    assert.deepEqual(Array.from(prediction.wallBounces, b => b.step), actualBounces);
+  });
+}
+
+test('late wall bounce extends once, to at most 15 points', () => {
+  const prediction = physics.predictTrajectory({ x: 210, y: 500 }, { vx: 350, vy: -500 }, params, {
+    dotSteps, pointCount: 13, maxPoints: 15
+  });
+  assert.equal(prediction.points.length, 15);
+  assert.equal(prediction.wallBounces.length, 1);
+});
+
+test('reachability can explicitly disable wall reflection', () => {
+  const body = { x: 43, y: 500, vx: -500, vy: -800 };
+  const bounced = physics.stepBallFlight(body, params, dt);
+  const free = physics.stepBallFlight(body, { ...params, walls: false }, dt);
+  assert.equal(bounced.wallHit, true);
+  assert.equal(bounced.x, params.wallInset + params.ballRadius);
+  assert.equal(bounced.vx, Math.abs(free.vx) * params.wallRestitution);
+  assert.equal(free.wallHit, false);
+  assert.ok(free.x < bounced.x);
+});
+
+test('30/60/120/144 Hz, 20 Hz and seeded jitter produce bit-identical step histories', () => {
+  const random = seededRandom();
+  const jitter = [];
+  let remaining = 2;
+  while (remaining > 0) {
+    const frame = Math.min(remaining, 1 / 180 + random() * 0.05);
+    jitter.push(frame);
+    remaining -= frame;
+  }
+  const sequences = [30, 60, 120, 144, 20].map(hz => Array(hz * 2).fill(1 / hz));
+  sequences.push(jitter);
+  let reference;
+  for (const frames of sequences) {
+    let accumulator = 0;
+    let body = { x: 210, y: 590, ...launch(80, -110) };
+    const history = [];
+    for (const frame of frames) {
+      const result = physics.advanceFixedSteps(accumulator, frame, 0.1, stepDt => {
+        assert.equal(stepDt, dt);
+        body = physics.stepBallFlight(body, params, stepDt);
+        history.push([body.x, body.y, body.vx, body.vy]);
+      });
+      accumulator = result.accumulator;
+      assert.ok(result.alpha >= 0 && result.alpha < 1);
+    }
+    assert.equal(history.length, 240);
+    if (!reference) reference = history;
+    else assert.deepEqual(history, reference);
+  }
+});
+
+test('maximum launch displacement is less than ball radius + rim radius', () => {
+  const radiusSum = game.evaluate('BALL_RADIUS + RIM_RADIUS');
+  let maximum = 0;
+  for (let angle = 0; angle < 360; angle++) {
+    const radians = angle * Math.PI / 180;
+    const velocity = launch(Math.cos(radians) * 140, Math.sin(radians) * 140);
+    const start = { x: 210, y: 500, ...velocity };
+    const next = physics.stepBallFlight(start, params, dt);
+    maximum = Math.max(maximum, Math.hypot(next.x - start.x, next.y - start.y));
+  }
+  assert.ok(maximum < radiusSum, `${maximum} < ${radiusSum}`);
+});
+
+test('launch matches old release formula including min edge, curve and max clamp', () => {
+  const min = game.evaluate('MIN_SHOT_PULL');
+  for (const [x, y] of [[0, 0], [0, -min], [0, -min - 0.001], [30, -60], [-90, -100], [300, -400]]) {
+    const p = pull(x, y);
+    const oldImpulse = params.launchPowerScale * (1 + (params.maxPowerBoost - 1) * Math.pow(p.ratio, 4));
+    const velocity = physics.getLaunchVelocity(p, params);
+    assert.equal(velocity.vx, p.x * p.power * oldImpulse);
+    assert.equal(velocity.vy, p.y * p.power * oldImpulse);
+    assert.equal(p.len, Math.min(Math.hypot(x, y), game.evaluate('MAX_PULL')));
+    const g = loadGame();
+    const actual = g.evaluate(`
+      activePointer = 1;
+      drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: ${-x}, pointerCurrentY: ${-y} };
+      onPointerUp({ pointerId: 1, preventDefault() {} });
+      ({ vx: ball.vx, vy: ball.vy, held: ball.held });
+    `);
+    assert.equal(actual.held, p.len <= min);
+    assert.equal(actual.vx, p.len > min ? velocity.vx : 0);
+    assert.equal(actual.vy, p.len > min ? velocity.vy : 0);
+  }
+});
+
+test('frame clamp bounds catch-up and preserves fractional remainder', () => {
+  for (const frame of [0.1, 0.2, 2, 100]) {
+    let calls = 0;
+    const result = physics.advanceFixedSteps(dt / 2, frame, 0.1, () => calls++);
+    assert.equal(calls, 12);
+    assert.equal(result.steps, 12);
+    assert.ok(Math.abs(result.alpha - 0.5) < 1e-12);
+  }
+  assert.equal(physics.advanceFixedSteps(0, -1, 0.1, () => assert.fail()).steps, 0);
+});
+
+test('segment damping retains full impact loss and time-based overlap loss', () => {
+  const g = loadGame();
+  for (const hz of [60, 120]) {
+    for (const incoming of [true, false]) {
+      const result = g.evaluate(`
+        Object.assign(ball, { x: 10, y: 50, vx: ${incoming ? -100 : 100}, vy: 30 });
+        collideSegment(0, 0, 0, 100, 0.54, 1 / ${hz});
+        ({ vx: ball.vx, vy: ball.vy });
+      `);
+      const damping = incoming ? 0.96 : Math.pow(0.96, 60 / hz);
+      assert.equal(result.vx, (incoming ? 54 : 100) * damping);
+      assert.equal(result.vy, 30 * damping);
+    }
+  }
+});
+
+test('game release, preview and debug recording use the same flight samples', () => {
+  const g = loadGame({ search: '?debugShots=1' });
+  const result = g.evaluate(`
+    state = 'playing';
+    hoops = [makeHoop(210, 2000, 0, null), makeHoop(300, 1800, 1, null)];
+    Object.assign(ball, { x: 210, y: 590 });
+    activePointer = 1;
+    drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: -110, pointerCurrentY: 90 };
+    onPointerUp({ pointerId: 1, preventDefault() {} });
+    for (let i = 0; i < debugShots.preview.points.at(-1).step; i++) updateFixedStep(Physics.FIXED_DT);
+    ({ preview: debugShots.preview.points, actual: debugShots.actual });
+  `);
+  assert.equal(result.actual.length, result.preview.length);
+  result.preview.forEach((point, i) => {
+    assert.equal(point.x, result.actual[i].x);
+    assert.equal(point.y, result.actual[i].y);
+  });
+  assert.equal(loadGame().evaluate('debugShots'), null);
+});
+
+test('render interpolation is separate from collision history and snaps on settle/reset', () => {
+  const g = loadGame();
+  g.evaluate(`
+    state = 'playing';
+    hoops = [makeHoop(210, 2000, 0, null), makeHoop(300, 1800, 1, null)];
+    Object.assign(ball, { x: 210, y: 590, vx: 100, vy: -900, held: false, angularVelocity: 6 });
+    snapBallRender();
+    updateFixedStep(Physics.FIXED_DT);
+    renderAlpha = 0.5;
+    drawBall();
+  `);
+  const snapshot = g.evaluate('({ previous: {...previousBallRender}, current: {...currentBallRender}, prevX: ball.prevX })');
+  const translate = g.calls.find(call => call[0] === 'translate');
+  const rotate = g.calls.find(call => call[0] === 'rotate');
+  assert.equal(translate[1], (snapshot.previous.x + snapshot.current.x) / 2);
+  assert.equal(translate[2], (snapshot.previous.y + snapshot.current.y) / 2);
+  assert.equal(rotate[1], (snapshot.previous.rotation + snapshot.current.rotation) / 2);
+  assert.equal(snapshot.prevX, 210);
+  for (const action of ['beginBallSettle(hoops[0])', 'finishBallSettle()', 'placeBallInHoop(hoops[1])', 'recoverFirstTransition()', 'resetGame(false)']) {
+    const value = g.evaluate(`${action}; ({ previous: {...previousBallRender}, current: {...currentBallRender}, x: ball.x, y: ball.y, rotation: ball.rotation })`);
+    assert.deepEqual(value.previous, value.current);
+    assert.equal(value.current.x, value.x);
+    assert.equal(value.current.y, value.y);
+    assert.equal(value.current.rotation, value.rotation);
+  }
+});
+
+test('stopping/restarting clears accumulator and keeps a single guarded RAF', () => {
+  const g = loadGame();
+  g.evaluate('gameBooted = true; physicsAccumulator = 0.004; renderAlpha = 0.48; restartAnimationLoop(); restartAnimationLoop();');
+  assert.equal(g.rafs.size, 1);
+  assert.equal(g.evaluate('physicsAccumulator'), 0);
+  assert.equal(g.evaluate('renderAlpha'), 0);
+  g.evaluate('stopAnimationLoop()');
+  assert.equal(g.rafs.size, 0);
+});
+
+test('real game loop keeps collisions, moving hoops, countdown and loss timing identical across frame rates', () => {
+  const random = seededRandom();
+  const jitter = [];
+  let remaining = 2;
+  while (remaining > 0) {
+    const frame = Math.min(remaining, 1 / 180 + random() * 0.05);
+    jitter.push(frame);
+    remaining -= frame;
+  }
+  const sequences = [30, 60, 120, 144, 20].map(hz => Array(hz * 2).fill(1 / hz));
+  sequences.push(jitter);
+  let reference;
+  for (const frames of sequences) {
+    const g = loadGame();
+    g.evaluate(`
+      gameBooted = true;
+      state = 'playing';
+      const source = makeHoop(128, 563, 0, null);
+      const target = makeHoop(280, 380, 1, source);
+      target.moving = true;
+      target.moveAmplitude = 28;
+      target.movePhase = 0.5;
+      target.role = HOOP_ROLE.TARGET;
+      source.role = HOOP_ROLE.CURRENT;
+      hoops = [source, target];
+      Object.assign(ball, { x: 128, y: 593, vx: 500, vy: -900, held: false, launchHoopId: 0, angularVelocity: 6 });
+      snapBallRender();
+      timedShotActive = true;
+      timedShotRemainingSeconds = 10;
+      timedShotInitialSeconds = 10;
+    `);
+    let now = 0;
+    for (const frame of frames) {
+      now += frame * 1000;
+      g.evaluate(`loop(${now}, animationLoopGeneration, false)`);
+    }
+    const result = JSON.parse(g.evaluate(`JSON.stringify({
+      x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, rotation: ball.rotation,
+      held: ball.held, touchedHoop: ball.touchedHoop, wallBounceCount: ball.wallBounceCount,
+      state, score, targetCameraY, simulationCameraY, airborneTime,
+      simulationTime, timedShotRemainingSeconds,
+      hoops: hoops.map(h => ({ x: h.x, y: h.y }))
+    })`));
+    if (!reference) reference = result;
+    else assert.deepEqual(result, reference);
+  }
+});
+
+test('presentation updates do not move the ball, advance shot time or consume physics steps', () => {
+  const g = loadGame();
+  g.evaluate(`
+    state = 'playing';
+    ball.held = false;
+    ball.angularVelocity = 6;
+    timedShotActive = true;
+    timedShotRemainingSeconds = 5;
+  `);
+  const state = 'JSON.stringify({ ball, simulationTime, airborneTime, timedShotRemainingSeconds, physicsAccumulator })';
+  const before = g.evaluate(state);
+  g.evaluate('updatePresentation(0.1)');
+  assert.equal(g.evaluate(state), before);
+});
+
+test('debug overlay persists after landing, resets on the next release, and draws hollow samples', () => {
+  const g = loadGame({ search: '?debugShots=1' });
+  g.evaluate(`
+    state = 'playing';
+    hoops = [makeHoop(210, 2000, 0, null), makeHoop(300, 1800, 1, null)];
+    activePointer = 1;
+    drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: 0, pointerCurrentY: 120 };
+    onPointerUp({ pointerId: 1, preventDefault() {} });
+    for (let i = 0; i < TRAJECTORY_DOT_STEPS; i++) updateFixedStep(Physics.FIXED_DT);
+    placeBallInHoop(hoops[0]);
+    drawDebugShots();
+  `);
+  assert.equal(g.evaluate('debugShots.actual.length'), 1);
+  assert.equal(g.evaluate('debugShots.recording'), false);
+  assert.ok(g.calls.some(call => call[0] === 'arc' && call[3] === 5));
+  assert.ok(g.calls.some(call => call[0] === 'stroke'));
+  g.evaluate(`
+    activePointer = 2;
+    drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: -40, pointerCurrentY: 110 };
+    onPointerUp({ pointerId: 2, preventDefault() {} });
+  `);
+  assert.equal(g.evaluate('debugShots.actual.length'), 0);
+  assert.equal(g.evaluate('debugShots.steps'), 0);
+  assert.equal(g.evaluate('debugShots.recording'), true);
+});
+
+function slideSpeed(hz, seconds) {
+  // Ball resting on a 30° slope (screen y down), released from rest: only gravity and segment contact.
+  const g = loadGame();
+  return g.evaluate(`(() => {
+    const dir = { x: Math.cos(Math.PI / 6), y: Math.sin(Math.PI / 6) };
+    const normal = { x: dir.y, y: -dir.x };
+    const offset = BALL_RADIUS + 2.5;
+    Object.assign(ball, { x: 40 * dir.x + normal.x * offset, y: 40 * dir.y + normal.y * offset, vx: 0, vy: 0 });
+    const dt = 1 / ${hz};
+    for (let i = 0; i < Math.round(${seconds} * ${hz}); i++) {
+      const f = Physics.stepBallFlight(ball, REACHABILITY_PARAMS, dt);
+      Object.assign(ball, { x: f.x, y: f.y, vx: f.vx, vy: f.vy });
+      collideSegment(0, 0, 900 * dir.x, 900 * dir.y, 0.54, dt);
+    }
+    return Math.hypot(ball.vx, ball.vy);
+  })()`);
+}
+
+test('sliding contact loses the same speed per second at 60 and 120 steps per second', () => {
+  const at60 = slideSpeed(60, 0.8);
+  const at120 = slideSpeed(120, 0.8);
+  assert.ok(at60 > 100, `ball should slide, got ${at60}`);
+  assert.ok(Math.abs(at120 - at60) / at60 < 0.02, `60 Hz ${at60} vs 120 Hz ${at120}`);
+});
+
+function runFrames(frames, { stallAt = -1, stallSeconds = 0 } = {}) {
+  const g = loadGame();
+  g.evaluate(`
+    gameBooted = true;
+    state = 'playing';
+    hoops = [makeHoop(210, 2000, 0, null), makeHoop(300, 1800, 1, null)];
+    Object.assign(ball, { x: 210, y: 590, vx: 300, vy: -1000, held: false, launchHoopId: 0, angularVelocity: 0 });
+    snapBallRender();
+  `);
+  let now = 0;
+  frames.forEach((frame, i) => {
+    if (i === stallAt) now += stallSeconds * 1000;
+    now += frame * 1000;
+    g.evaluate(`loop(${now}, animationLoopGeneration, false)`);
+  });
+  return JSON.parse(g.evaluate('JSON.stringify({ x: ball.x, y: ball.y, airborneTime })'));
+}
+
+test('a long frame gap (background tab) is skipped, not caught up', () => {
+  const frames = Array(40).fill(1 / 60);
+  const smooth = runFrames(frames.slice(0, 39));
+  const stalled = runFrames(frames, { stallAt: 20, stallSeconds: 2 });
+  assert.deepEqual(stalled, smooth);
+});
+
+test('a release between fixed steps still follows the preview exactly', () => {
+  const g = loadGame({ search: '?debugShots=1' });
+  g.evaluate(`
+    gameBooted = true;
+    state = 'playing';
+    // Keep hoops on screen: the start hoop is at the bottom, so the shot cannot be lost or recovered early.
+    hoops = [makeHoop(210, 600, 0, null), makeHoop(300, 420, 1, null)];
+    placeBallInHoop(hoops[0]);
+  `);
+  let now = 0;
+  const frame = () => { now += 1000 / 144; g.evaluate(`loop(${now}, animationLoopGeneration, false)`); };
+  for (let i = 0; i < 7; i++) frame();
+  const alphaAtRelease = g.evaluate('renderAlpha');
+  g.evaluate(`
+    activePointer = 1;
+    drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: -60, pointerCurrentY: 120 };
+    onPointerUp({ pointerId: 1, preventDefault() {} });
+  `);
+  for (let i = 0; i < 120; i++) frame();
+  const { preview, actual } = g.evaluate('({ preview: debugShots.preview.points, actual: debugShots.actual })');
+  assert.ok(alphaAtRelease > 0, 'release should happen mid-step');
+  assert.ok(actual.length >= preview.length);
+  preview.forEach((point, i) => {
+    assert.equal(actual[i].x, point.x);
+    assert.equal(actual[i].y, point.y);
+  });
+});
