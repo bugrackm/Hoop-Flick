@@ -39,11 +39,9 @@
   const ballCoinBalance = document.getElementById("ballCoinBalance");
   const ballCoinBalanceValue = document.getElementById("ballCoinBalanceValue");
   const ballEconomyStatus = document.getElementById("ballEconomyStatus");
-  const ballRewardedCoinButton = document.getElementById("ballRewardedCoinButton");
   const themeCoinBalance = document.getElementById("themeCoinBalance");
   const themeCoinBalanceValue = document.getElementById("themeCoinBalanceValue");
   const themeEconomyStatus = document.getElementById("themeEconomyStatus");
-  const themeRewardedCoinButton = document.getElementById("themeRewardedCoinButton");
   const restartButton = document.getElementById("restartButton");
   const gameOverMenuButton = document.getElementById("gameOverMenuButton");
   const retryButton = document.getElementById("retryButton");
@@ -67,11 +65,6 @@
   const achievementList = document.getElementById("achievementList");
   const achievementToast = document.getElementById("achievementToast");
   const achievementToastName = document.getElementById("achievementToastName");
-  const reviveOfferOverlay = document.getElementById("reviveOfferOverlay");
-  const reviveOfferCountdown = document.getElementById("reviveOfferCountdown");
-  const reviveOfferStatus = document.getElementById("reviveOfferStatus");
-  const reviveRewardButton = document.getElementById("reviveRewardButton");
-  const reviveFinishButton = document.getElementById("reviveFinishButton");
 
   const STORAGE_KEY = "hoop-flick-best";
   const DARK_MODE_KEY = "hoop-flick-dark-mode";
@@ -154,10 +147,6 @@
   const COIN_COLLECT_PARTICLE_COUNT = 8;
   const MAX_PARTICLES = 160;
   const MAX_SHOT_RINGS = 12;
-  const COIN_REWARD_ID = "hoop-flick-coins-25-v1";
-  const CONTINUE_REWARD_ID = "hoop-flick-continue-once-v1";
-  const REWARDED_COIN_AMOUNT = 25;
-  const REVIVE_OFFER_DURATION = 6;
   const SPAWN_ATTEMPTS = 14;
   const MIN_HOOP_TILT = 2.5 * (Math.PI / 180);
   const MAX_HOOP_TILT = 7 * (Math.PI / 180);
@@ -1117,11 +1106,6 @@
       owned: "Sahip",
       insufficientCoins: "Yetersiz coin",
       purchased: "Satın alındı",
-      watchAdCoins: "Reklam İzle · +25 Coin",
-      rewardedUnavailable: "Reklam şu anda kullanılamıyor",
-      rewardedPending: "Reklam açılıyor…",
-      rewardedCoinsGranted: "+25 coin kazandın",
-      rewardedNotEarned: "Ödül alınamadı",
       chooseTheme: "Tema seç",
       selectedTheme: "Seçili tema",
       themeGym: "Klasik",
@@ -1148,12 +1132,6 @@
       comingSoon: "Yakında",
       comingSoonText: "Yeni toplar ve efektler sonraki güncellemede burada olacak.",
       gameOver: "Oyun Bitti",
-      lastChance: "SON ŞANS",
-      continueRun: "Oyuna Devam Et",
-      continueRunHint: "Reklam izleyerek bu run'a kaldığın yerden devam et.",
-      decisionTime: "Karar süresi",
-      watchAdContinue: "Reklam İzle ve Devam Et",
-      finishRun: "Bitir",
       restart: "Yeniden Başlat",
       mainMenu: "Ana Menü",
       returnMainMenu: "Ana Menüye Dön",
@@ -1278,11 +1256,6 @@
       owned: "Owned",
       insufficientCoins: "Not enough coins",
       purchased: "Purchased",
-      watchAdCoins: "Watch Ad · +25 Coins",
-      rewardedUnavailable: "Ad currently unavailable",
-      rewardedPending: "Opening ad…",
-      rewardedCoinsGranted: "+25 coins earned",
-      rewardedNotEarned: "Reward not earned",
       chooseTheme: "Choose theme",
       selectedTheme: "Selected theme",
       themeGym: "Classic",
@@ -1309,12 +1282,6 @@
       comingSoon: "Coming Soon",
       comingSoonText: "New balls and effects will arrive here in a future update.",
       gameOver: "Game Over",
-      lastChance: "LAST CHANCE",
-      continueRun: "Continue Your Run",
-      continueRunHint: "Watch an ad to continue this run from where you left off.",
-      decisionTime: "Decision time",
-      watchAdContinue: "Watch Ad and Continue",
-      finishRun: "Finish",
       restart: "Restart",
       mainMenu: "Main Menu",
       returnMainMenu: "Return to Main Menu",
@@ -1359,24 +1326,17 @@
   let offsetY = 0;
   let lastTime = 0;
   let audioContext = null;
-  const playablesBridge = window.PlayablesBridge || null;
-  let isPlayablesEnv = Boolean(playablesBridge && playablesBridge.isInPlayablesEnv());
-  let platformAudioEnabled = true;
-  let platformPaused = false;
   let userPaused = false;
-  let platformReady = false;
-  let platformBootComplete = false;
+  let gameBooted = false;
   let animationFrameId = null;
   let animationLoopGeneration = 0;
-  let cloudSaveTimer = null;
+  let saveTimer = null;
   let persistenceReady = false;
   let saveDirty = false;
   let saveRevision = 0;
   let savedRevision = 0;
   let saveInFlight = false;
   let saveDrainQueued = false;
-  let scoreSubmitTimer = null;
-  let pendingHighScore = null;
   let settingsOrigin = "menu";
   let muted = readBooleanPreference(MUTED_KEY, false);
   let darkMode = readBooleanPreference(DARK_MODE_KEY, false);
@@ -1421,12 +1381,7 @@
   let timedShotInitialSeconds = 0;
   let timedShotTickMask = 0;
   let timedShotLastDisplayedSecond = null;
-  let rewardedRequest = null;
-  let rewardedRequestSequence = 0;
-  let reviveUsed = false;
   let gameOverFinalized = false;
-  let reviveOfferRemaining = 0;
-  let reviveOfferActive = false;
   let hoops = [];
   let currentHoopId = 0;
   let targetHoopId = 1;
@@ -1494,7 +1449,7 @@
   }
 
   function canAccumulateActivePlayTime() {
-    return platformReady && !platformPaused && !userPaused && state === "playing";
+    return gameBooted && !userPaused && state === "playing";
   }
 
   function startActivePlayClock(now) {
@@ -1565,11 +1520,7 @@
     shotRings = [];
     resetCoinRun();
     resetTimedShotRun();
-    reviveUsed = false;
     gameOverFinalized = false;
-    reviveOfferRemaining = 0;
-    reviveOfferActive = false;
-    if (reviveOfferStatus) reviveOfferStatus.textContent = "";
     if (activePointer !== null && canvas.hasPointerCapture(activePointer)) {
       canvas.releasePointerCapture(activePointer);
     }
@@ -1594,12 +1545,10 @@
     customizeOverlay.classList.remove("active");
     themeOverlay?.classList.remove("active");
     pauseOverlay.classList.remove("active");
-    reviveOfferOverlay?.classList.remove("active");
     gameOverOverlay.classList.remove("active");
     retryOverlay.classList.remove("active");
     retryButton.blur();
     syncUiState();
-    syncRewardedUi();
   }
 
   function makeStartHoop() {
@@ -1684,14 +1633,14 @@
   }
 
   function startGame() {
-    if (!platformReady || platformPaused || rewardedRequest) return;
+    if (!gameBooted) return;
     ensureAudio();
     resetGame(false);
     playGameSound("start");
   }
 
   function beginGameOver() {
-    if (gameOverFinalized || state === "revive-offer") return false;
+    if (gameOverFinalized) return false;
     consumeTimedShotChallenge();
     airborneTime = 0;
     ball.angularVelocity = 0;
@@ -1700,90 +1649,25 @@
       canvas.releasePointerCapture(activePointer);
     }
     activePointer = null;
-    if (score > 0 && !reviveUsed && !rewardedRequest && hasRewardedCapability()) {
-      return beginReviveOffer();
-    }
     return finalizeGameOver();
-  }
-
-  function beginReviveOffer() {
-    if (score <= 0 || gameOverFinalized || reviveUsed || rewardedRequest || !hasRewardedCapability()) {
-      return finalizeGameOver();
-    }
-    if (setGameState("revive-offer")) markSaveDirty();
-    reviveOfferActive = true;
-    reviveOfferRemaining = REVIVE_OFFER_DURATION;
-    if (reviveOfferCountdown) reviveOfferCountdown.textContent = reviveOfferRemaining.toFixed(1);
-    if (reviveOfferStatus) reviveOfferStatus.textContent = "";
-    retryOverlay.classList.remove("active");
-    gameOverOverlay.classList.remove("active");
-    reviveOfferOverlay?.classList.add("active");
-    syncUiState();
-    syncRewardedUi();
-    return true;
   }
 
   function finalizeGameOver() {
     if (gameOverFinalized) return false;
     gameOverFinalized = true;
-    reviveOfferActive = false;
-    reviveOfferRemaining = 0;
     const activeTimeChanged = setGameState("gameover");
     if (activeTimeChanged) markSaveDirty();
     airborneTime = 0;
     ball.angularVelocity = 0;
-    const previousBest = best;
     best = Math.max(best, score);
-    writeBestScore(best, best > previousBest);
-    flushScoreSubmission();
-    void flushPlatformSave();
+    writeBestScore(best);
+    void flushSave();
     bestValue.textContent = String(best);
     finalScore.textContent = t("score") + " " + score;
-    reviveOfferOverlay?.classList.remove("active");
     retryOverlay.classList.remove("active");
     gameOverOverlay.classList.add("active");
     syncUiState();
-    syncRewardedUi();
     playGameSound("gameover");
-    return true;
-  }
-
-  function resumeFromRewardedContinue(restartLoop) {
-    if (gameOverFinalized || reviveUsed || state !== "revive-offer") return false;
-    const currentHoop = getHoopById(currentHoopId);
-    if (!currentHoop) return finalizeGameOver();
-    reviveUsed = true;
-    reviveOfferActive = false;
-    reviveOfferRemaining = 0;
-    swishStreak = 0;
-    perfectChain = 0;
-    comboText = 0;
-    lastScoreGain = 1;
-    scoreFeedbackText = t("nice") + " +1";
-    lastWasPerfect = false;
-    lastWasBounce = false;
-    shake = 0;
-    particles = [];
-    shotRings = [];
-    coinFeedback = null;
-    highScoreCelebration.elapsed = 0;
-    highScoreCelebration.active = false;
-    highScoreCelebration.confetti = [];
-    drag = null;
-    if (activePointer !== null && canvas.hasPointerCapture(activePointer)) {
-      canvas.releasePointerCapture(activePointer);
-    }
-    activePointer = null;
-    placeBallInHoop(currentHoop);
-    ball.scoredHoopId = currentHoopId;
-    setHoopRoles(currentHoopId, targetHoopId);
-    setGameState("playing");
-    reviveOfferOverlay?.classList.remove("active");
-    retryOverlay.classList.remove("active");
-    gameOverOverlay.classList.remove("active");
-    syncUiState();
-    syncRewardedUi();
-    if (restartLoop !== false && !platformPaused) restartAnimationLoop();
     return true;
   }
 
@@ -2217,7 +2101,7 @@
     };
     emitCoinCollectEffect(position.x, position.y);
     syncEconomyBalances();
-    schedulePlatformSave();
+    requestSave(false);
     return true;
   }
 
@@ -2317,7 +2201,7 @@
   }
 
   function onPointerDown(event) {
-    if (!platformReady || platformPaused || userPaused || rewardedRequest || state !== "playing" || activePointer !== null) return;
+    if (!gameBooted || userPaused || state !== "playing" || activePointer !== null) return;
     const settleCanBeSkipped = ball.settle && ball.settle.elapsed >= BALL_SETTLE_INPUT_DELAY;
     if (!ball.held && !settleCanBeSkipped) return;
     const p = screenToWorld(event.clientX, event.clientY);
@@ -2527,12 +2411,6 @@
   }
 
   function update(dt) {
-    if (state === "revive-offer") {
-      updateReviveOffer(dt);
-      return;
-    }
-    if (rewardedRequest) return;
-
     for (const hoop of hoops) {
       hoop.entranceTimer = Math.min(1, (hoop.entranceTimer ?? hoop.spawnProgress ?? 1) + dt / HOOP_SPAWN_DURATION);
       hoop.spawnProgress = hoop.entranceTimer;
@@ -2565,8 +2443,6 @@
       } else if (!ball.held) {
         updateAirborneBall(dt);
       }
-
-      if (state === "revive-offer") return;
 
       const targetHoop = getHoopById(targetHoopId) || hoops[hoops.length - 1];
       const leadY = ball.held || ball.settle
@@ -2972,7 +2848,7 @@
     recordBasketStats(wasPerfect, usedWall, lastScoreGain);
     const achievementUnlocked = recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot);
     if (achievementUnlocked) requestSave(true);
-    else schedulePlatformSave();
+    else requestSave(false);
     if (
       highScoreCelebration.eligibleThisRun
       && !highScoreCelebration.hasCelebratedThisRun
@@ -2982,7 +2858,7 @@
     }
     if (score > best) {
       best = score;
-      writeBestScore(best, true);
+      writeBestScore(best);
     }
     updateScore();
     shake = 5;
@@ -3488,7 +3364,7 @@
   }
 
   function drawCurrentScore() {
-    if (state !== "playing" && state !== "paused" && state !== "pause-settings" && state !== "retry" && state !== "revive-offer" && state !== "gameover") return;
+    if (state !== "playing" && state !== "paused" && state !== "pause-settings" && state !== "retry" && state !== "gameover") return;
     const colors = getCanvasTheme();
     ctx.save();
     ctx.globalAlpha = 0.11;
@@ -4152,13 +4028,13 @@
   }
 
   function ensureAudio() {
-    if (muted || !platformAudioEnabled || platformPaused || userPaused) return;
+    if (muted || userPaused) return;
     if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     if (audioContext.state === "suspended") audioContext.resume();
   }
 
   function playGameSound(name, context) {
-    if (muted || !platformAudioEnabled || platformPaused || userPaused) return;
+    if (muted || userPaused) return;
     const detail = context || {};
     if (name === "button") {
       playTone(360, 0.045, "sine", 0.018, 0, 460);
@@ -4197,7 +4073,6 @@
   }
 
   function readBestScore() {
-    if (isPlayablesEnv) return 0;
     try {
       const value = Number(localStorage.getItem(STORAGE_KEY) || 0);
       return Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -4206,22 +4081,18 @@
     }
   }
 
-  function writeBestScore(value, isNewRecord) {
+  function writeBestScore(value) {
     if (!Number.isSafeInteger(value) || value < 0) return;
     if (!persistenceReady) return;
-    if (!isPlayablesEnv) {
-      try {
-        localStorage.setItem(STORAGE_KEY, String(value));
-      } catch (error) {
-        // Storage can be unavailable in some embedded/browser privacy modes.
-      }
+    try {
+      localStorage.setItem(STORAGE_KEY, String(value));
+    } catch (error) {
+      // Storage can be unavailable in some embedded/browser privacy modes.
     }
-    schedulePlatformSave();
-    if (isPlayablesEnv && isNewRecord) scheduleScoreSubmission(value);
+    requestSave(false);
   }
 
   function readBooleanPreference(key, fallback) {
-    if (isPlayablesEnv) return fallback;
     try {
       const value = localStorage.getItem(key);
       return value === null ? fallback : value === "true";
@@ -4231,7 +4102,6 @@
   }
 
   function readLanguagePreference() {
-    if (isPlayablesEnv) return "tr";
     try {
       const savedLanguage = localStorage.getItem(LANGUAGE_KEY);
       return savedLanguage === "en" ? "en" : "tr";
@@ -4245,7 +4115,6 @@
   }
 
   function readBallSkinPreference() {
-    if (isPlayablesEnv) return "classic";
     try {
       const savedSkin = localStorage.getItem(BALL_SKIN_KEY);
       return normalizeBallSkinId(savedSkin);
@@ -4255,7 +4124,6 @@
   }
 
   function readThemePreference() {
-    if (isPlayablesEnv) return "gym";
     try {
       const savedTheme = localStorage.getItem(THEME_KEY);
       return THEMES[savedTheme] ? savedTheme : "gym";
@@ -4480,7 +4348,7 @@
     return value.length === canonical.length && value.every((id, index) => id === canonical[index]);
   }
 
-  function migrateSaveData(save, platformLocale, allowSavedLanguage) {
+  function migrateSaveData(save, allowSavedLanguage) {
     const source = save && typeof save === "object" && !Array.isArray(save) ? save : null;
     const version = source && Number.isSafeInteger(source.version) ? source.version : 0;
     const settings = source && source.settings && typeof source.settings === "object"
@@ -4510,8 +4378,6 @@
     let migratedLanguage = language;
     if (allowSavedLanguage && (settings.language === "tr" || settings.language === "en")) {
       migratedLanguage = settings.language;
-    } else if (typeof platformLocale === "string" && platformLocale) {
-      migratedLanguage = platformLocale.toLowerCase().startsWith("tr") ? "tr" : "en";
     }
 
     const needsMigration = Boolean(source) && (
@@ -4601,61 +4467,53 @@
 
   function writeBooleanPreference(key, value, immediate) {
     if (!persistenceReady) return;
-    if (!isPlayablesEnv) {
-      try {
-        localStorage.setItem(key, String(value));
-      } catch (error) {
-        // Preferences can be unavailable in embedded/browser privacy modes.
-      }
+    try {
+      localStorage.setItem(key, String(value));
+    } catch (error) {
+      // Preferences can be unavailable in embedded/browser privacy modes.
     }
     requestSave(Boolean(immediate));
   }
 
   function writeLanguagePreference(value, immediate) {
     if (!persistenceReady) return;
-    if (!isPlayablesEnv) {
-      try {
-        localStorage.setItem(LANGUAGE_KEY, value);
-      } catch (error) {
-        // Language preferences can be unavailable in privacy modes.
-      }
+    try {
+      localStorage.setItem(LANGUAGE_KEY, value);
+    } catch (error) {
+      // Language preferences can be unavailable in privacy modes.
     }
     requestSave(Boolean(immediate));
   }
 
   function writeBallSkinPreference(value, immediate) {
     if (!persistenceReady) return;
-    if (!isPlayablesEnv) {
-      try {
-        localStorage.setItem(BALL_SKIN_KEY, value);
-      } catch (error) {
-        // Ball selection can be unavailable in privacy modes.
-      }
+    try {
+      localStorage.setItem(BALL_SKIN_KEY, value);
+    } catch (error) {
+      // Ball selection can be unavailable in privacy modes.
     }
     requestSave(Boolean(immediate));
   }
 
   function writeThemePreference(value, immediate) {
     if (!persistenceReady) return;
-    if (!isPlayablesEnv) {
-      try {
-        localStorage.setItem(THEME_KEY, value);
-      } catch (error) {
-        // Theme selection can be unavailable in privacy modes.
-      }
+    try {
+      localStorage.setItem(THEME_KEY, value);
+    } catch (error) {
+      // Theme selection can be unavailable in privacy modes.
     }
     requestSave(Boolean(immediate));
   }
 
-  function makeSaveObject(forPlayables) {
+  function makeSaveObject() {
     commitActivePlaySegment({ keepRunning: canAccumulateActivePlayTime() });
     const settings = {
       darkMode: Boolean(darkMode),
       muted: Boolean(muted),
       ballSkin: ownedBallSkins.has(selectedBallSkinId) ? selectedBallSkinId : "classic",
-      theme: ownedThemes.has(selectedThemeId) ? selectedThemeId : "gym"
+      theme: ownedThemes.has(selectedThemeId) ? selectedThemeId : "gym",
+      language
     };
-    if (!forPlayables) settings.language = language;
     return {
       version: SAVE_VERSION,
       highScore: Number.isSafeInteger(best) && best >= 0 ? best : 0,
@@ -4668,10 +4526,6 @@
     };
   }
 
-  function makePlatformSaveData() {
-    return JSON.stringify(makeSaveObject(isPlayablesEnv));
-  }
-
   function markSaveDirty() {
     if (!persistenceReady) return;
     saveRevision += 1;
@@ -4682,27 +4536,19 @@
     if (!persistenceReady) return;
     markSaveDirty();
     if (immediate) {
-      if (cloudSaveTimer !== null) window.clearTimeout(cloudSaveTimer);
-      cloudSaveTimer = null;
+      if (saveTimer !== null) window.clearTimeout(saveTimer);
+      saveTimer = null;
       void drainSaveQueue();
       return;
     }
-    if (cloudSaveTimer !== null) window.clearTimeout(cloudSaveTimer);
-    cloudSaveTimer = window.setTimeout(() => {
-      cloudSaveTimer = null;
+    if (saveTimer !== null) window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => {
+      saveTimer = null;
       void drainSaveQueue();
     }, 350);
   }
 
-  function schedulePlatformSave() {
-    requestSave(false);
-  }
-
   async function persistSaveData(data) {
-    if (isPlayablesEnv) {
-      if (!platformBootComplete || !playablesBridge) return false;
-      return playablesBridge.saveData(data);
-    }
     try {
       localStorage.setItem(LOCAL_SAVE_KEY, data);
       return true;
@@ -4724,7 +4570,7 @@
       do {
         saveDrainQueued = false;
         const revision = saveRevision;
-        const data = makePlatformSaveData();
+        const data = JSON.stringify(makeSaveObject());
         const saved = await persistSaveData(data);
         if (!saved) {
           succeeded = false;
@@ -4742,50 +4588,14 @@
     return succeeded;
   }
 
-  function flushPlatformSave() {
+  function flushSave() {
     if (!persistenceReady) return Promise.resolve(false);
     if (commitActivePlaySegment({ keepRunning: canAccumulateActivePlayTime() })) markSaveDirty();
-    if (cloudSaveTimer !== null) {
-      window.clearTimeout(cloudSaveTimer);
-      cloudSaveTimer = null;
+    if (saveTimer !== null) {
+      window.clearTimeout(saveTimer);
+      saveTimer = null;
     }
     return drainSaveQueue();
-  }
-
-  function scheduleScoreSubmission(value) {
-    if (!isPlayablesEnv || !playablesBridge || !Number.isSafeInteger(value) || value < 0) return;
-    pendingHighScore = Math.max(pendingHighScore ?? 0, value);
-    if (scoreSubmitTimer !== null) window.clearTimeout(scoreSubmitTimer);
-    scoreSubmitTimer = window.setTimeout(flushScoreSubmission, 650);
-  }
-
-  function flushScoreSubmission() {
-    if (scoreSubmitTimer !== null) {
-      window.clearTimeout(scoreSubmitTimer);
-      scoreSubmitTimer = null;
-    }
-    if (pendingHighScore === null || !playablesBridge) return;
-    const value = pendingHighScore;
-    pendingHighScore = null;
-    playablesBridge.sendScore(value);
-  }
-
-  function applyPlatformSave(rawData, platformLocale) {
-    let save = null;
-    let invalidSave = false;
-    if (typeof rawData === "string" && rawData.trim()) {
-      try {
-        const parsed = JSON.parse(rawData);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) save = parsed;
-        else invalidSave = true;
-      } catch (error) {
-        invalidSave = true;
-        console.warn("[Hoop Flick] Invalid cloud save; defaults will be used.", error);
-      }
-    }
-    const migrated = migrateSaveData(save, platformLocale, true);
-    applyMigratedSave(migrated);
-    return invalidSave || migrated.needsMigration;
   }
 
   function formatActivePlayTime(value) {
@@ -4914,7 +4724,7 @@
     achievementSummary.textContent = `${t("achievementCompleted")} ${completed} / ${ACHIEVEMENTS.length}`;
     achievementCoinBalanceValue.textContent = String(normalizeCoins(coins));
     const pendingReward = getPendingAchievementReward();
-    achievementClaimAllButton.disabled = pendingReward <= 0 || platformPaused;
+    achievementClaimAllButton.disabled = pendingReward <= 0;
     achievementClaimAllButton.textContent = pendingReward > 0
       ? `${t("claimAllAchievements")} · +${pendingReward}`
       : t("claimAllAchievements");
@@ -4930,9 +4740,7 @@
     const achievement = ACHIEVEMENT_BY_ID[achievementId];
     if (
       !achievement
-      || !platformReady
-      || platformPaused
-      || rewardedRequest
+      || !gameBooted
       || !achievementState.unlockedIds.includes(achievementId)
       || achievementState.claimedIds.includes(achievementId)
     ) return false;
@@ -4950,7 +4758,7 @@
   }
 
   function claimAllAchievementRewards() {
-    if (!platformReady || platformPaused || rewardedRequest) return false;
+    if (!gameBooted) return false;
     const pendingIds = getPendingAchievementIds();
     if (pendingIds.length === 0) return false;
     const reward = pendingIds.reduce((total, id) => total + ACHIEVEMENT_BY_ID[id].reward, 0);
@@ -4974,7 +4782,7 @@
   }
 
   function showNextAchievementToast() {
-    if (!platformReady || achievementToastTimer !== null || achievementToastQueue.length === 0) return;
+    if (!gameBooted || achievementToastTimer !== null || achievementToastQueue.length === 0) return;
     const achievementId = achievementToastQueue.shift();
     const achievement = ACHIEVEMENT_BY_ID[achievementId];
     if (!achievement) {
@@ -5030,7 +4838,6 @@
     renderBallCustomizer();
     renderThemeCustomizer();
     syncControlLabels();
-    syncRewardedUi();
     syncTimedShotHud(true);
   }
 
@@ -5054,150 +4861,6 @@
     if (coinHud) coinHud.setAttribute("aria-label", label);
     if (ballCoinBalance) ballCoinBalance.setAttribute("aria-label", label);
     if (themeCoinBalance) themeCoinBalance.setAttribute("aria-label", label);
-  }
-
-  function hasRewardedCapability() {
-    if (!playablesBridge || typeof playablesBridge.isRewardedAdAvailable !== "function") return false;
-    try {
-      return playablesBridge.isRewardedAdAvailable() === true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function syncRewardedUi() {
-    const available = hasRewardedCapability();
-    const busy = Boolean(rewardedRequest);
-    const coinLabel = busy
-      ? t("rewardedPending")
-      : available
-        ? t("watchAdCoins")
-        : t("rewardedUnavailable");
-    for (const button of [ballRewardedCoinButton, themeRewardedCoinButton]) {
-      if (!button) continue;
-      const label = button.querySelector("span:last-child");
-      if (label) label.textContent = coinLabel;
-      button.disabled = !platformReady || platformPaused || !available || busy;
-      button.setAttribute("aria-busy", String(busy));
-      button.setAttribute("aria-label", coinLabel);
-      button.title = available ? "" : t("rewardedUnavailable");
-    }
-
-    const continuePending = rewardedRequest?.kind === "continue";
-    if (reviveRewardButton) {
-      reviveRewardButton.disabled = state !== "revive-offer" || platformPaused || !available || busy;
-      reviveRewardButton.setAttribute("aria-busy", String(continuePending));
-      reviveRewardButton.textContent = continuePending ? t("rewardedPending") : t("watchAdContinue");
-    }
-    if (reviveFinishButton) {
-      reviveFinishButton.disabled = state !== "revive-offer" || platformPaused || continuePending;
-    }
-  }
-
-  function requestRewardedCoins(origin) {
-    if (!platformReady || platformPaused || rewardedRequest || !hasRewardedCapability()) {
-      syncRewardedUi();
-      return false;
-    }
-    clearEconomyStatus(origin);
-    return startRewardedRequest("coins", COIN_REWARD_ID, origin);
-  }
-
-  function requestRewardedContinue() {
-    if (
-      state !== "revive-offer"
-      || !reviveOfferActive
-      || gameOverFinalized
-      || reviveUsed
-      || platformPaused
-      || rewardedRequest
-      || !hasRewardedCapability()
-    ) {
-      if (state === "revive-offer" && !rewardedRequest) finalizeGameOver();
-      return false;
-    }
-    if (reviveOfferStatus) reviveOfferStatus.textContent = t("rewardedPending");
-    return startRewardedRequest("continue", CONTINUE_REWARD_ID, "revive");
-  }
-
-  function startRewardedRequest(kind, rewardId, origin) {
-    if (rewardedRequest || !playablesBridge || typeof playablesBridge.requestRewardedAd !== "function") return false;
-    const request = {
-      id: rewardedRequestSequence += 1,
-      kind,
-      origin,
-      settled: false,
-      earned: false
-    };
-    rewardedRequest = request;
-    syncRewardedUi();
-    let result;
-    try {
-      result = playablesBridge.requestRewardedAd(rewardId);
-    } catch (error) {
-      settleRewardedRequest(request, false);
-      return true;
-    }
-    Promise.resolve(result).then(
-      (earned) => settleRewardedRequest(request, earned === true),
-      () => settleRewardedRequest(request, false)
-    );
-    return true;
-  }
-
-  function settleRewardedRequest(request, earned) {
-    if (rewardedRequest !== request || request.settled) return;
-    request.settled = true;
-    request.earned = earned === true;
-    if (platformPaused) {
-      syncRewardedUi();
-      return;
-    }
-    completeRewardedRequest(request);
-  }
-
-  function completeRewardedRequest(request, restartLoop) {
-    if (rewardedRequest !== request || !request.settled || platformPaused) return false;
-    rewardedRequest = null;
-    if (request.kind === "coins") {
-      if (request.earned === true) {
-        coins = Math.min(Number.MAX_SAFE_INTEGER, normalizeCoins(coins) + REWARDED_COIN_AMOUNT);
-        syncEconomyBalances();
-        showEconomyStatus(request.origin, t("rewardedCoinsGranted"));
-        requestSave(true);
-      } else {
-        showEconomyStatus(request.origin, t("rewardedNotEarned"));
-      }
-      syncRewardedUi();
-      return true;
-    }
-    if (request.kind === "continue" && state === "revive-offer" && !gameOverFinalized) {
-      if (reviveOfferStatus) reviveOfferStatus.textContent = request.earned === true ? "" : t("rewardedNotEarned");
-      if (request.earned === true) {
-        resumeFromRewardedContinue(restartLoop);
-      } else {
-        finalizeGameOver();
-      }
-    }
-    syncRewardedUi();
-    return true;
-  }
-
-  function processDeferredRewardedRequest() {
-    if (!rewardedRequest?.settled || platformPaused) return false;
-    return completeRewardedRequest(rewardedRequest, false);
-  }
-
-  function declineReviveOffer() {
-    if (state !== "revive-offer" || rewardedRequest?.kind === "continue") return false;
-    return finalizeGameOver();
-  }
-
-  function updateReviveOffer(dt) {
-    if (!reviveOfferActive || state !== "revive-offer" || rewardedRequest?.kind === "continue") return;
-    reviveOfferRemaining = Math.max(0, reviveOfferRemaining - dt);
-    if (reviveOfferCountdown) reviveOfferCountdown.textContent = reviveOfferRemaining.toFixed(1);
-    if (reviveOfferRemaining <= 0) finalizeGameOver();
   }
 
   function clearEconomyStatus(kind) {
@@ -5338,7 +5001,7 @@
   }
 
   function selectBallSkin(skinId) {
-    if (!BALL_SKINS[skinId] || platformPaused || rewardedRequest) return;
+    if (!BALL_SKINS[skinId]) return;
     const price = ECONOMY_PRICES.ball[skinId] ?? 0;
     const isOwned = ownedBallSkins.has(skinId);
     let achievementUnlocked = false;
@@ -5365,7 +5028,7 @@
   }
 
   function selectTheme(themeId) {
-    if (!THEMES[themeId] || platformPaused || rewardedRequest) return;
+    if (!THEMES[themeId]) return;
     const price = ECONOMY_PRICES.theme[themeId] ?? 0;
     const isOwned = ownedThemes.has(themeId);
     let achievementUnlocked = false;
@@ -5393,7 +5056,7 @@
   }
 
   function toggleLanguage() {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     language = language === "tr" ? "en" : "tr";
     applyLanguage();
@@ -5401,7 +5064,7 @@
   }
 
   function toggleDarkMode() {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     darkMode = !darkMode;
     applyDarkMode();
@@ -5409,7 +5072,7 @@
   }
 
   function toggleSound() {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     muted = !muted;
     writeBooleanPreference(MUTED_KEY, muted);
     syncControlLabels();
@@ -5420,7 +5083,7 @@
   }
 
   function syncControlLabels() {
-    const soundEnabled = !muted && platformAudioEnabled;
+    const soundEnabled = !muted;
     const enabledLabel = darkMode ? t("on") : t("off");
     const darkLabel = t("darkMode") + ": " + enabledLabel;
     settingsSoundButton.setAttribute("aria-pressed", String(soundEnabled));
@@ -5440,7 +5103,7 @@
   }
 
   function openMenuPanel(panelName) {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     playGameSound("button");
     setGameState(panelName);
@@ -5462,7 +5125,7 @@
   }
 
   function openAchievements() {
-    if (!platformReady || platformPaused || state !== "profile") return;
+    if (!gameBooted || state !== "profile") return;
     ensureAudio();
     playGameSound("button");
     setGameState("achievements");
@@ -5473,7 +5136,7 @@
   }
 
   function closeAchievements() {
-    if (!platformReady || platformPaused || state !== "achievements") return;
+    if (!gameBooted || state !== "achievements") return;
     ensureAudio();
     playGameSound("button");
     setGameState("profile");
@@ -5484,7 +5147,7 @@
   }
 
   function returnToMainMenu() {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     playGameSound("button");
     setGameState("menu");
@@ -5498,7 +5161,7 @@
   }
 
   function pauseGameplay() {
-    if (!platformReady || platformPaused || userPaused || state !== "playing") return;
+    if (!gameBooted || userPaused || state !== "playing") return;
     ensureAudio();
     playGameSound("button");
     userPaused = true;
@@ -5514,16 +5177,16 @@
     pauseOverlay.classList.add("active");
     settingsOverlay.classList.remove("active");
     syncUiState();
-    if (activeTimeChanged) schedulePlatformSave();
+    if (activeTimeChanged) requestSave(false);
   }
 
   function resumePausedGame() {
-    if (!platformReady || platformPaused || !userPaused || state !== "paused") return;
+    if (!gameBooted || !userPaused || state !== "paused") return;
     userPaused = false;
     setGameState("playing");
     pauseOverlay.classList.remove("active");
     syncUiState();
-    if (platformAudioEnabled && !muted && audioContext) audioContext.resume().catch(() => {});
+    if (!muted && audioContext) audioContext.resume().catch(() => {});
     restartAnimationLoop();
   }
 
@@ -5533,7 +5196,7 @@
   }
 
   function openPauseSettings() {
-    if (!userPaused || state !== "paused" || platformPaused) return;
+    if (!userPaused || state !== "paused") return;
     setGameState("pause-settings");
     settingsOrigin = "pause";
     pauseOverlay.classList.remove("active");
@@ -5542,7 +5205,7 @@
   }
 
   function closeSettings() {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     if (settingsOrigin === "pause" && userPaused) {
       setGameState("paused");
       settingsOverlay.classList.remove("active");
@@ -5554,10 +5217,9 @@
   }
 
   function exitGameplayToMainMenu() {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     playGameSound("button");
-    flushScoreSubmission();
     if (stopActivePlayClock()) markSaveDirty();
     userPaused = false;
     pauseOverlay.classList.remove("active");
@@ -5565,12 +5227,12 @@
     settingsOverlay.classList.remove("active");
     themeOverlay?.classList.remove("active");
     resetGame(true);
-    void flushPlatformSave();
+    void flushSave();
     restartAnimationLoop();
   }
 
   function canRunAnimationLoop() {
-    return platformReady && !platformPaused && !userPaused;
+    return gameBooted && !userPaused;
   }
 
   function stopAnimationLoop() {
@@ -5598,46 +5260,8 @@
     });
   }
 
-  function handlePlatformAudioChange(enabled) {
-    platformAudioEnabled = Boolean(enabled);
-    if (!platformAudioEnabled && audioContext && audioContext.state === "running") {
-      audioContext.suspend().catch(() => {});
-    } else if (platformAudioEnabled && !muted && !platformPaused && !userPaused && audioContext) {
-      audioContext.resume().catch(() => {});
-    }
-    syncControlLabels();
-  }
-
-  function handlePlatformPause() {
-    if (platformPaused) return;
-    if (stopActivePlayClock()) markSaveDirty();
-    platformPaused = true;
-    gameShell.inert = true;
-    drag = null;
-    if (activePointer !== null && canvas.hasPointerCapture(activePointer)) {
-      canvas.releasePointerCapture(activePointer);
-    }
-    activePointer = null;
-    stopAnimationLoop();
-    syncRewardedUi();
-    if (audioContext && audioContext.state === "running") audioContext.suspend().catch(() => {});
-    flushScoreSubmission();
-    flushPlatformSave();
-  }
-
-  function handlePlatformResume() {
-    if (!platformPaused) return;
-    platformPaused = false;
-    gameShell.inert = false;
-    startActivePlayClock();
-    if (platformAudioEnabled && !muted && !userPaused && audioContext) audioContext.resume().catch(() => {});
-    processDeferredRewardedRequest();
-    syncRewardedUi();
-    restartAnimationLoop();
-  }
-
   function playTone(freq, duration, type, gain, delay, endFreq) {
-    if (muted || !platformAudioEnabled || platformPaused || userPaused || !audioContext) return;
+    if (muted || userPaused || !audioContext) return;
     const now = audioContext.currentTime + (delay || 0);
     const osc = audioContext.createOscillator();
     const amp = audioContext.createGain();
@@ -5667,50 +5291,17 @@
     animationFrameId = window.requestAnimationFrame((nextNow) => loop(nextNow, generation, false));
   }
 
-  async function bootGame() {
+  function bootGame() {
     resize();
+    const localRecord = readLocalSaveRecord();
+    const migrated = migrateSaveData(localRecord.save, true);
+    applyMigratedSave(migrated);
+    const shouldPersistMigratedSave = localRecord.shouldPersist || migrated.needsMigration;
     applyLanguage();
     applyDarkMode();
     resetGame(true);
-    draw();
-    if (playablesBridge) playablesBridge.firstFrameReady();
-
-    let platformState = {
-      data: null,
-      audioEnabled: true,
-      language: null,
-      inPlayablesEnv: false
-    };
-    if (playablesBridge) {
-      try {
-        platformState = await playablesBridge.initialize({
-          onAudioEnabledChange: handlePlatformAudioChange,
-          onPause: handlePlatformPause,
-          onResume: handlePlatformResume
-        });
-      } catch (error) {
-        console.warn("[Hoop Flick] Playables initialization failed; local fallback is active.", error);
-      }
-    }
-
-    isPlayablesEnv = Boolean(platformState.inPlayablesEnv);
-    platformAudioEnabled = platformState.audioEnabled !== false;
-    let shouldPersistMigratedSave = false;
-    if (isPlayablesEnv) {
-      shouldPersistMigratedSave = applyPlatformSave(platformState.data, platformState.language);
-    } else {
-      const localRecord = readLocalSaveRecord();
-      const migrated = migrateSaveData(localRecord.save, null, true);
-      applyMigratedSave(migrated);
-      shouldPersistMigratedSave = localRecord.shouldPersist || migrated.needsMigration;
-    }
-    applyLanguage();
-    applyDarkMode();
-    resetGame(true);
-    platformBootComplete = true;
     persistenceReady = true;
-    platformReady = true;
-    gameShell.inert = platformPaused;
+    gameBooted = true;
     const bootstrapAchievementsChanged = evaluateAchievements({
       metrics: ["highScore", "ballCollection", "themeCollection"],
       announce: false,
@@ -5718,9 +5309,7 @@
     });
     const dailyLoginChanged = recordDailyLogin();
     syncAchievementUi();
-    syncRewardedUi();
     if (shouldPersistMigratedSave || (bootstrapAchievementsChanged && !dailyLoginChanged)) requestSave(true);
-    if (playablesBridge) playablesBridge.gameReady();
     restartAnimationLoop();
   }
 
@@ -5754,10 +5343,6 @@
   achievementClaimAllButton.addEventListener("click", claimAllAchievementRewards);
   customizeBackButton.addEventListener("click", returnToMainMenu);
   if (themeBackButton) themeBackButton.addEventListener("click", returnToMainMenu);
-  ballRewardedCoinButton?.addEventListener("click", () => requestRewardedCoins("ball"));
-  themeRewardedCoinButton?.addEventListener("click", () => requestRewardedCoins("theme"));
-  reviveRewardButton?.addEventListener("click", requestRewardedContinue);
-  reviveFinishButton?.addEventListener("click", declineReviveOffer);
   menuButton.addEventListener("click", pauseGameplay);
   pauseContinueButton.addEventListener("click", resumePausedGame);
   pauseOverlay.addEventListener("click", handlePauseOverlayClick);
@@ -5766,19 +5351,19 @@
   gameOverMenuButton.addEventListener("click", exitGameplayToMainMenu);
   retryMenuButton.addEventListener("click", exitGameplayToMainMenu);
   restartButton.addEventListener("click", () => {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     resetGame(false);
     playGameSound("start");
   });
   retryButton.addEventListener("click", () => {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     ensureAudio();
     retryShot();
     playGameSound("retry");
   });
   window.addEventListener("keydown", (event) => {
-    if (!platformReady || platformPaused) return;
+    if (!gameBooted) return;
     if (event.key === "Escape") {
       if (event.repeat) return;
       if (state === "playing") {
