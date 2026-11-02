@@ -444,13 +444,13 @@ test('impact feel never changes the ball: collisions match with feedback disable
 
 test('squash spring settles back to round and stays bounded', () => {
   const g = loadGame();
-  g.evaluate('kickBallSquash(0.4, -0.5)');
-  assert.equal(g.evaluate('ballSquash.value'), -0.26);
+  g.evaluate('kickBallSquash(0.4, -1)');
+  assert.equal(g.evaluate('ballSquash.value'), -g.evaluate('SQUASH_MAX'));
   for (let i = 0; i < 60; i += 1) g.evaluate('updatePresentation(1 / 60)');
   assert.ok(Math.abs(g.evaluate('ballSquash.value')) < 0.005);
   g.evaluate('kickBallSquash(0, 0.2); updatePresentation(0.1)');
   const value = g.evaluate('ballSquash.value');
-  assert.ok(Math.abs(value) <= 0.26 && Number.isFinite(value));
+  assert.ok(Math.abs(value) <= g.evaluate('SQUASH_MAX') && Number.isFinite(value));
 });
 
 test('impact sounds still fire right after a restart rewinds the clock', () => {
@@ -466,4 +466,73 @@ test('impact sounds still fire right after a restart rewinds the clock', () => {
     onBallImpact(0, -1, 600, "rim");
   `);
   assert.equal(g.evaluate('JSON.stringify(__sounds.filter(name => name === "rim"))'), '["rim","rim"]');
+});
+
+test('flame colour helpers parse, invert and reject bad input', () => {
+  const g = loadGame();
+  assert.equal(g.evaluate('JSON.stringify(parseHexColor("#ff8a2e"))'), '{"r":255,"g":138,"b":46}');
+  assert.equal(g.evaluate('parseHexColor("red")'), null);
+  assert.equal(g.evaluate('invertHexColor("#000000")'), '#ffffff');
+  assert.equal(g.evaluate('invertHexColor(invertHexColor("#3a7bc4"))'), '#3a7bc4');
+  assert.equal(g.evaluate('mixHexColor("#000000", "#ffffff", 0.5)'), '#808080');
+  const bands = JSON.parse(g.evaluate('JSON.stringify(ensureFlameBands(["#2cacf7", "#2cacf7", "#2cacf7"]))'));
+  assert.equal(new Set(bands).size, 3);
+  assert.equal(bands[1], '#2cacf7');
+  assert.equal(g.evaluate('ensureFlameBands(["#fff0a6", "#ff8a2e", "#c4702c"]).join()'), '#fff0a6,#ff8a2e,#c4702c');
+});
+
+test('cel flame trail is bounded, draws a ribbon and clears when the streak ends', () => {
+  const g = loadGame();
+  g.evaluate(`
+    state = 'playing';
+    hoops = [makeHoop(210, 2000, 0, null), makeHoop(300, 1800, 1, null)];
+    perfectChain = 6;
+    swishStreak = 6;
+    Object.assign(ball, { x: 60, y: 590, vx: 900, vy: -500, held: false, angularVelocity: 0 });
+    snapBallRender();
+  `);
+  for (let i = 0; i < 120; i += 1) {
+    g.evaluate(`ball.x = 60 + (${i} % 40) * 8; ball.y = 590 - (${i} % 40) * 4; snapBallRender(); updatePresentation(1 / 60)`);
+  }
+  assert.ok(g.evaluate('flameTrail.length') > 2);
+  assert.ok(g.evaluate('flameTrail.length') <= 48);
+  assert.ok(g.evaluate('countFlameParticles()') <= g.evaluate('MAX_FLAME_PARTICLES'));
+  const spine = JSON.parse(g.evaluate('JSON.stringify(buildFlameSpine(ball.x, ball.y))'));
+  let length = 0;
+  for (let i = 1; i < spine.length; i += 1) length += Math.hypot(spine[i].x - spine[i - 1].x, spine[i].y - spine[i - 1].y);
+  assert.ok(length <= g.evaluate('FLAME_TRAIL_MAX_LENGTH') + 1e-6, `spine length ${length}`);
+  const before = g.calls.length;
+  g.evaluate('drawBall()');
+  const fills = g.calls.slice(before).filter(call => call[0] === 'fill').length;
+  assert.ok(fills >= 3, `ribbon layers should fill, got ${fills}`);
+  g.evaluate('perfectChain = 0; updatePresentation(1 / 60)');
+  assert.equal(g.evaluate('flameTrail.length'), 0);
+});
+
+test('held ball on a streak burns upward instead of using a stale trail', () => {
+  const g = loadGame();
+  g.evaluate(`state = 'playing'; perfectChain = 4; Object.assign(ball, { x: 200, y: 400, held: true }); snapBallRender();`);
+  const spine = JSON.parse(g.evaluate('JSON.stringify(buildFlameSpine(200, 400))'));
+  assert.equal(spine.length, 7);
+  assert.ok(spine.every((point, i) => i === 0 || point.y < 400));
+});
+
+test('a basket plays one combined score sound, not stacked cues', () => {
+  const g = loadGame();
+  const sounds = JSON.parse(g.evaluate(`
+    const played = [];
+    playGameSound = (name, detail) => played.push({ name, detail });
+    recordAchievementBasket = () => false;
+    state = 'playing';
+    hoops = [makeHoop(210, 600, 0, null), makeHoop(300, 420, 1, null)];
+    currentHoopId = 0;
+    targetHoopId = 1;
+    setHoopRoles(0, 1);
+    swishStreak = 3;
+    Object.assign(ball, { x: 300, y: 425, vx: 0, vy: 200, held: false, touchedHoop: false, touchedWall: true });
+    scoreTargetHoop(hoops[1]);
+    JSON.stringify(played);
+  `));
+  assert.deepEqual(sounds.map(sound => sound.name), ['score']);
+  assert.deepEqual(sounds[0].detail, { perfect: true, wall: true, streak: 4 });
 });
