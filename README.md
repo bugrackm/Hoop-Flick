@@ -34,7 +34,6 @@ Clean shots and bank shots trigger special scoring feedback. As your score incre
 - Light and dark modes
 - Turkish and English language support
 - High-score tracking and responsive sound effects
-- YouTube Playables integration for cloud saves, score submission, platform lifecycle, and rewarded ads
 
 ## Run Locally
 
@@ -68,15 +67,8 @@ Hoop-Flick/
 ├── index.html            # Game interface and entry point
 ├── style.css             # Responsive UI and visual styles
 ├── game.js               # Gameplay, physics, rendering, and progression
-├── playablesBridge.js    # YouTube Playables SDK integration and browser fallback
 └── favicon.png           # Game icon
 ```
-
-## YouTube Playables
-
-YouTube-specific functionality is isolated in `playablesBridge.js`. When the game runs outside YouTube Playables—such as on GitHub Pages or a local server—it falls back safely to standard browser behavior.
-
-Rewarded ads and other platform-only features are available only inside a supported YouTube Playables environment.
 
 ## License
 
