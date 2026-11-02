@@ -103,10 +103,10 @@
 
   // MANUAL SHOT TUNING
   // Lower LAUNCH_POWER_SCALE for a slower/shorter real shot; raise it for more reach.
-  // TRAJECTORY_POWER_SCALE changes only the preview spacing (1 = same launch scale).
+  // TRAJECTORY_DOT_STEPS controls preview spacing in whole 1/120 s physics steps.
   // PULL_CURVE_EXPONENT changes how quickly power builds while dragging.
   const LAUNCH_POWER_SCALE = 7.48;
-  const TRAJECTORY_POWER_SCALE = 1;
+  const TRAJECTORY_DOT_STEPS = 5;
   const PULL_CURVE_EXPONENT = 1;
 
   const MAX_PULL = 140;
@@ -122,6 +122,25 @@
   const AIRBORNE_RETRY_DELAY = 7.5;
   const RIM_RADIUS = 7;
   const BALL_RADIUS = 12.95;
+  const WALL_RESTITUTION = 0.66;
+  const MAX_FRAME_DT = 0.1;
+  // Longer gaps (background tab, debugger) are stalls: skip them instead of catching up.
+  const STALL_FRAME_DT = 0.25;
+  // Approach speed that separates a real impact from gravity pressing a resting/sliding ball.
+  const SEGMENT_IMPACT_SPEED = 40;
+  const Physics = globalThis.HoopFlickPhysics;
+  const FLIGHT_PARAMS = Object.freeze({
+    gravity: GRAVITY,
+    airDrag: AIR_DRAG,
+    launchPowerScale: LAUNCH_POWER_SCALE,
+    maxPowerBoost: MAX_POWER_BOOST,
+    wallInset: WALL_INSET,
+    ballRadius: BALL_RADIUS,
+    worldWidth: WORLD_W,
+    wallRestitution: WALL_RESTITUTION
+  });
+  // Reachability historically ignores walls; retain that spawn rule.
+  const REACHABILITY_PARAMS = Object.freeze({ ...FLIGHT_PARAMS, walls: false });
   const NET_REST_Y = 30;
   const BALL_SETTLE_DURATION = 0.24;
   const BALL_SETTLE_INPUT_DELAY = 0.1;
@@ -176,7 +195,6 @@
   const CHALLENGED_MAX_VERTICAL_GAP = 190;
   const REACHABILITY_PULL_RATIOS = [0.6, 0.72, 0.82, 0.92, 1];
   const REACHABILITY_ELEVATION_DEGREES = [48, 56, 64, 72, 78, 84];
-  const REACHABILITY_STEP = 1 / 60;
   const REACHABILITY_MAX_TIME = 1.65;
 
   const CHALLENGE_COSTS = {
@@ -1325,6 +1343,8 @@
   let offsetX = 0;
   let offsetY = 0;
   let lastTime = 0;
+  let physicsAccumulator = 0;
+  let renderAlpha = 0;
   let audioContext = null;
   let userPaused = false;
   let gameBooted = false;
@@ -1354,6 +1374,9 @@
   let runStartBestScore = best;
   let cameraY = 0;
   let targetCameraY = 0;
+  let previousTargetCameraY = 0;
+  // Offscreen loss must not depend on the presentation frame rate.
+  let simulationCameraY = 0;
   let simulationTime = 0;
   let shake = 0;
   let comboText = 0;
@@ -1432,6 +1455,36 @@
     launchHoopId: -1
   };
 
+  const previousBallRender = { x: ball.x, y: ball.y, rotation: ball.rotation };
+  const currentBallRender = { ...previousBallRender };
+  const debugShots = new URLSearchParams(window.location.search).get("debugShots") === "1"
+    ? { preview: null, actual: [], steps: 0, recording: false, ratio: 0 }
+    : null;
+  // Dev aid: ?perf=1 shows frame timing, split by whether the flame trail is on.
+  const perfStats = new URLSearchParams(window.location.search).get("perf") === "1"
+    ? { windowStart: 0, frames: 0, worstMs: 0, cpuMs: 0, cpuMaxMs: 0, line: "", fire: { frames: 0, slow: 0, worstMs: 0 }, normal: { frames: 0, slow: 0, worstMs: 0 } }
+    : null;
+
+  function getBallRenderPosition() {
+    return {
+      x: previousBallRender.x + (currentBallRender.x - previousBallRender.x) * renderAlpha,
+      y: previousBallRender.y + (currentBallRender.y - previousBallRender.y) * renderAlpha
+    };
+  }
+
+  function snapBallRender() {
+    previousBallRender.x = currentBallRender.x = ball.x;
+    previousBallRender.y = currentBallRender.y = ball.y;
+    previousBallRender.rotation = currentBallRender.rotation = ball.rotation;
+  }
+
+  function resetPhysicsClock() {
+    physicsAccumulator = 0;
+    renderAlpha = 0;
+    snapBallRender();
+    previousTargetCameraY = targetCameraY;
+  }
+
   bestValue.textContent = String(best);
 
   function resize() {
@@ -1445,6 +1498,7 @@
     scale = Math.min(viewW / WORLD_W, viewH / WORLD_H);
     offsetX = (viewW - WORLD_W * scale) * 0.5;
     offsetY = (viewH - WORLD_H * scale) * 0.5;
+    resetPhysicsClock();
     if (userPaused) draw();
   }
 
@@ -1482,6 +1536,7 @@
     }
     const activeTimeChanged = state === "playing" ? stopActivePlayClock() : false;
     state = nextState;
+    resetPhysicsClock();
     startActivePlayClock();
     return activeTimeChanged;
   }
@@ -1500,7 +1555,15 @@
     highScoreCelebration.confetti = [];
     cameraY = 0;
     targetCameraY = 0;
+    previousTargetCameraY = 0;
+    simulationCameraY = 0;
     simulationTime = 0;
+    resetPhysicsClock();
+    if (debugShots) {
+      debugShots.preview = null;
+      debugShots.actual = [];
+      debugShots.recording = false;
+    }
     shake = 0;
     comboText = 0;
     perfectChain = 0;
@@ -1630,6 +1693,8 @@
     ball.launchHoopId = -1;
     ballEffects.trailCooldown = 0;
     airborneTime = 0;
+    snapBallRender();
+    if (debugShots) debugShots.recording = false;
   }
 
   function startGame() {
@@ -1690,6 +1755,8 @@
     activePointer = null;
     cameraY = 0;
     targetCameraY = 0;
+    previousTargetCameraY = 0;
+    simulationCameraY = 0;
     placeBallInHoop(startHoop);
     ball.scoredHoopId = startHoop.id;
     setHoopRoles(currentHoopId, targetHoopId);
@@ -1926,40 +1993,64 @@
     return targetPositions.every((position) => isReachableTargetPosition(source, target, position));
   }
 
+  // Wall-free flights do not depend on the start point, so each test shot is simulated once
+  // (rightward) and reused as offsets; leftward shots mirror x. Saves a re-simulation per spawn candidate.
+  let reachabilityPaths = null;
+
+  function getReachabilityPaths() {
+    if (reachabilityPaths) return reachabilityPaths;
+    const stepCount = Math.ceil(REACHABILITY_MAX_TIME / Physics.FIXED_DT);
+    reachabilityPaths = [];
+    for (const pullRatio of REACHABILITY_PULL_RATIOS) {
+      const pullLength = MAX_PULL * pullRatio;
+      for (const elevationDegrees of REACHABILITY_ELEVATION_DEGREES) {
+        const elevation = elevationDegrees * (Math.PI / 180);
+        const velocity = Physics.getLaunchVelocity({
+          x: Math.cos(elevation) * pullLength,
+          y: -Math.sin(elevation) * pullLength,
+          ratio: pullRatio,
+          power: 1
+        }, FLIGHT_PARAMS);
+        let body = { x: 0, y: 0, ...velocity };
+        const offsets = new Float64Array(stepCount * 2);
+        for (let step = 0; step < stepCount; step += 1) {
+          body = Physics.stepBallFlight(body, REACHABILITY_PARAMS, Physics.FIXED_DT);
+          offsets[step * 2] = body.x;
+          offsets[step * 2 + 1] = body.y;
+        }
+        reachabilityPaths.push(offsets);
+      }
+    }
+    return reachabilityPaths;
+  }
+
   function isReachableTargetPosition(source, target, position) {
     const start = hoopToWorld(source, 0, NET_REST_Y);
-    const targetAtPosition = { ...target, x: position.x, y: position.y };
     const direction = position.x >= start.x ? 1 : -1;
     const mouthY = 4;
     const insideLimit = target.w * 0.35;
+    // Same transform as worldToHoop() for the target at the candidate position.
+    const cos = Math.cos(target.rotation);
+    const sin = Math.sin(target.rotation);
+    const startDx = start.x - position.x;
+    const startDy = start.y - position.y;
 
-    for (const pullRatio of REACHABILITY_PULL_RATIOS) {
-      const pullLength = MAX_PULL * pullRatio;
-      const speed = pullLength * LAUNCH_POWER_SCALE * getShotPowerBoost(pullRatio);
-      for (const elevationDegrees of REACHABILITY_ELEVATION_DEGREES) {
-        const elevation = elevationDegrees * (Math.PI / 180);
-        let x = start.x;
-        let y = start.y;
-        let vx = direction * Math.cos(elevation) * speed;
-        let vy = -Math.sin(elevation) * speed;
-
-        for (let elapsed = 0; elapsed < REACHABILITY_MAX_TIME; elapsed += REACHABILITY_STEP) {
-          const previousX = x;
-          const previousY = y;
-          vy += GRAVITY * REACHABILITY_STEP;
-          vx *= Math.pow(AIR_DRAG, REACHABILITY_STEP * 60);
-          vy *= Math.pow(AIR_DRAG, REACHABILITY_STEP * 60);
-          x += vx * REACHABILITY_STEP;
-          y += vy * REACHABILITY_STEP;
-
-          const previousLocal = worldToHoop(targetAtPosition, previousX, previousY);
-          const local = worldToHoop(targetAtPosition, x, y);
-          if (local.y <= previousLocal.y || previousLocal.y > mouthY || local.y < mouthY) continue;
-          const localDeltaY = local.y - previousLocal.y;
-          const ratio = localDeltaY < 0.001 ? 1 : clamp((mouthY - previousLocal.y) / localDeltaY, 0, 1);
-          const xAtMouth = previousLocal.x + (local.x - previousLocal.x) * ratio;
+    for (const offsets of getReachabilityPaths()) {
+      let previousLocalX = startDx * cos + startDy * sin;
+      let previousLocalY = -startDx * sin + startDy * cos;
+      for (let index = 0; index < offsets.length; index += 2) {
+        const dx = startDx + direction * offsets[index];
+        const dy = startDy + offsets[index + 1];
+        const localX = dx * cos + dy * sin;
+        const localY = -dx * sin + dy * cos;
+        if (localY > previousLocalY && previousLocalY <= mouthY && localY >= mouthY) {
+          const localDeltaY = localY - previousLocalY;
+          const ratio = localDeltaY < 0.001 ? 1 : clamp((mouthY - previousLocalY) / localDeltaY, 0, 1);
+          const xAtMouth = previousLocalX + (localX - previousLocalX) * ratio;
           if (Math.abs(xAtMouth) < insideLimit) return true;
         }
+        previousLocalX = localX;
+        previousLocalY = localY;
       }
     }
     return false;
@@ -2071,14 +2162,14 @@
     return distanceX * distanceX + distanceY * distanceY <= radius * radius;
   }
 
-  function detectActiveCoinCollection() {
+  function detectActiveCoinCollection(flightX) {
     if (!activeCoin || activeCoin.targetHoopId !== targetHoopId) return;
     const position = getActiveCoinWorldPosition();
     if (!position) return;
     if (!segmentIntersectsCircle(
       ball.prevX,
       ball.prevY,
-      ball.x,
+      flightX,
       ball.y,
       position.x,
       position.y,
@@ -2234,9 +2325,17 @@
     event.preventDefault();
     const pull = drag ? getPullVector() : null;
     if (pull && pull.len > MIN_SHOT_PULL) {
-      const impulse = LAUNCH_POWER_SCALE * getShotPowerBoost(pull.ratio);
-      ball.vx = pull.x * pull.power * impulse;
-      ball.vy = pull.y * pull.power * impulse;
+      const velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS);
+      ball.vx = velocity.vx;
+      ball.vy = velocity.vy;
+      snapBallRender();
+      if (debugShots) {
+        debugShots.preview = predictShot(pull, velocity);
+        debugShots.actual = [];
+        debugShots.steps = 0;
+        debugShots.recording = true;
+        debugShots.ratio = pull.ratio;
+      }
       ball.held = false;
       ball.touchedHoop = false;
       ball.touchedWall = false;
@@ -2410,14 +2509,16 @@
     return true;
   }
 
-  function update(dt) {
-    for (const hoop of hoops) {
-      hoop.entranceTimer = Math.min(1, (hoop.entranceTimer ?? hoop.spawnProgress ?? 1) + dt / HOOP_SPAWN_DURATION);
-      hoop.spawnProgress = hoop.entranceTimer;
-      hoop.netAnimation = Math.max(0, hoop.netAnimation - dt);
-      hoop.releaseAnimation = Math.max(0, hoop.releaseAnimation - dt);
-    }
+  function updateFixedStep(dt) {
+    Object.assign(previousBallRender, currentBallRender);
+    previousTargetCameraY = targetCameraY;
+    updateSimulation(dt);
+    currentBallRender.x = ball.x;
+    currentBallRender.y = ball.y;
+    currentBallRender.rotation = ball.rotation;
+  }
 
+  function updateSimulation(dt) {
     if (state === "playing") {
       if (updateTimedShotCountdown(dt)) return;
       simulationTime += dt;
@@ -2449,7 +2550,22 @@
         ? ball.y - WORLD_H * 0.62
         : Math.min(ball.y - WORLD_H * 0.54, targetHoop.y - WORLD_H * 0.38);
       targetCameraY = Math.min(0, leadY);
-      cameraY += (targetCameraY - cameraY) * Math.min(1, dt * 4.2);
+      simulationCameraY += (targetCameraY - simulationCameraY) * (1 - Math.pow(1 - 4.2 / 60, dt * 60));
+    }
+  }
+
+  function updatePresentation(dt) {
+    for (const hoop of hoops) {
+      hoop.entranceTimer = Math.min(1, (hoop.entranceTimer ?? hoop.spawnProgress ?? 1) + dt / HOOP_SPAWN_DURATION);
+      hoop.spawnProgress = hoop.entranceTimer;
+      hoop.netAnimation = Math.max(0, hoop.netAnimation - dt);
+      hoop.releaseAnimation = Math.max(0, hoop.releaseAnimation - dt);
+    }
+
+    if (state === "playing") {
+      const cameraTarget = previousTargetCameraY + (targetCameraY - previousTargetCameraY) * renderAlpha;
+      cameraY += (cameraTarget - cameraY) * (1 - Math.pow(1 - 4.2 / 60, dt * 60));
+      if (!ball.held && !ball.settle) updateBallEffects(dt);
     }
 
     particles = particles.filter((p) => p.life > 0);
@@ -2481,33 +2597,30 @@
 
   function updateAirborneBall(dt) {
     airborneTime += dt;
-    updateBallEffects(dt);
+    ball.rotation += ball.angularVelocity * dt;
     ball.prevX = ball.x;
     ball.prevY = ball.y;
-    ball.vy += GRAVITY * dt;
-    ball.vx *= Math.pow(AIR_DRAG, dt * 60);
-    ball.vy *= Math.pow(AIR_DRAG, dt * 60);
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
+    const flight = Physics.stepBallFlight(ball, FLIGHT_PARAMS, dt);
+    ball.x = flight.x;
+    ball.y = flight.y;
+    ball.vx = flight.vx;
+    ball.vy = flight.vy;
 
-    detectActiveCoinCollection();
-
-    if (ball.x - ball.r < WALL_INSET) {
-      ball.x = WALL_INSET + ball.r;
-      ball.vx = Math.abs(ball.vx) * 0.66;
-      registerWallTouch(true);
-    } else if (ball.x + ball.r > WORLD_W - WALL_INSET) {
-      ball.x = WORLD_W - WALL_INSET - ball.r;
-      ball.vx = -Math.abs(ball.vx) * 0.66;
-      registerWallTouch(true);
-    }
+    detectActiveCoinCollection(flight.preWallX);
+    if (flight.wallHit) registerWallTouch(true);
 
     updateLaunchHoopSafety();
     detectHoopState();
     if (state !== "playing") return;
-    if (!ball.held && !ball.settle) collideHoops();
+    if (!ball.held && !ball.settle) collideHoops(dt);
+    if (debugShots && debugShots.recording) {
+      debugShots.steps += 1;
+      if (debugShots.steps % TRAJECTORY_DOT_STEPS === 0) {
+        debugShots.actual.push({ x: ball.x, y: ball.y });
+      }
+    }
 
-    if (!ball.settle && ball.y - cameraY > WORLD_H + 90) {
+    if (!ball.settle && ball.y - simulationCameraY > WORLD_H + 90) {
       if (!hasReachedSecondHoop && currentHoopId === 0) recoverFirstTransition();
       else beginGameOver();
     } else if (!ball.settle && !ball.held && airborneTime >= AIRBORNE_RETRY_DELAY) {
@@ -2559,6 +2672,8 @@
       startRotation: ball.rotation
     };
     airborneTime = 0;
+    snapBallRender();
+    if (debugShots) debugShots.recording = false;
   }
 
   function updateBallSettle(dt) {
@@ -2608,7 +2723,6 @@
   }
 
   function updateBallEffects(dt) {
-    ball.rotation += ball.angularVelocity * dt;
     const preset = BALL_EFFECT_PRESETS[ballEffects.selectedPreset];
     const comboThreshold = preset?.comboThreshold ?? 2;
     if (!preset || perfectChain < comboThreshold) return;
@@ -2620,6 +2734,8 @@
   }
 
   function emitPerfectFlameTrail(preset) {
+    // Spawn behind the ball as drawn (interpolated), not the latest physics step.
+    const origin = getBallRenderPosition();
     const velocityLength = Math.hypot(ball.vx, ball.vy) || 1;
     const backX = -ball.vx / velocityLength;
     const backY = -ball.vy / velocityLength;
@@ -2636,8 +2752,8 @@
       pushParticle({
         type: "flame",
         shape: preset.perfectFlameShape || "flame",
-        x: ball.x + backX * trailDistance + sideX * spread,
-        y: ball.y + backY * trailDistance + sideY * spread,
+        x: origin.x + backX * trailDistance + sideX * spread,
+        y: origin.y + backY * trailDistance + sideY * spread,
         vx: backX * speed + sideX * random(-18, 18),
         vy: backY * speed + sideY * random(-18, 18),
         gravity: preset.gravityModifier !== undefined ? preset.gravityModifier * 0.28 : 24,
@@ -2678,7 +2794,7 @@
     retryButton.blur();
   }
 
-  function collideHoops() {
+  function collideHoops(dt) {
     for (const hoop of hoops) {
       if (!canHoopAffectBall(hoop)) continue;
       if (hoop.id === ball.launchHoopId) continue;
@@ -2686,17 +2802,17 @@
       const rightRim = hoopToWorld(hoop, hoop.w * 0.5, 0);
       collideCircle(leftRim.x, leftRim.y, RIM_RADIUS, 0.74);
       collideCircle(rightRim.x, rightRim.y, RIM_RADIUS, 0.74);
-      collideNet(hoop);
+      collideNet(hoop, dt);
 
       if (!hasBoard(hoop)) continue;
       const boardGeometry = getBoardLocalGeometry(hoop);
       const boardTop = hoopToWorld(hoop, boardGeometry.x, boardGeometry.top);
       const boardBottom = hoopToWorld(hoop, boardGeometry.x, boardGeometry.bottom);
-      collideSegment(boardTop.x, boardTop.y, boardBottom.x, boardBottom.y, 0.64, "wall");
+      collideSegment(boardTop.x, boardTop.y, boardBottom.x, boardBottom.y, 0.64, dt, "wall");
     }
   }
 
-  function collideNet(hoop) {
+  function collideNet(hoop, dt) {
     if (ball.scoredHoopId === hoop.id) return;
     const leftTop = hoopToWorld(hoop, -hoop.w * 0.5 + 8, 7);
     const rightTop = hoopToWorld(hoop, hoop.w * 0.5 - 8, 7);
@@ -2709,8 +2825,8 @@
     const enteredFromTop = localPrevious.y <= 22 && localVelocity.y > 0 && Math.abs(localBall.x) < hoop.w * 0.39;
     if (enteredFromTop) return;
 
-    collideSegment(leftTop.x, leftTop.y, leftBottom.x, leftBottom.y, 0.54);
-    collideSegment(rightTop.x, rightTop.y, rightBottom.x, rightBottom.y, 0.54);
+    collideSegment(leftTop.x, leftTop.y, leftBottom.x, leftBottom.y, 0.54, dt);
+    collideSegment(rightTop.x, rightTop.y, rightBottom.x, rightBottom.y, 0.54, dt);
 
     if (localVelocity.y < 0 && localBall.y - ball.r < 52 && localBall.y + ball.r > 36) {
       const lowerWidth = 34;
@@ -2731,7 +2847,7 @@
     }
   }
 
-  function collideSegment(x1, y1, x2, y2, bounce, contactType) {
+  function collideSegment(x1, y1, x2, y2, bounce, dt, contactType) {
     const vx = x2 - x1;
     const vy = y2 - y1;
     const lenSq = vx * vx + vy * vy || 1;
@@ -2753,8 +2869,9 @@
       ball.vx -= (1 + bounce) * dot * nx;
       ball.vy -= (1 + bounce) * dot * ny;
     }
-    ball.vx *= 0.96;
-    ball.vy *= 0.96;
+    const damping = dot < -SEGMENT_IMPACT_SPEED ? 0.96 : Math.pow(0.96, dt * 60);
+    ball.vx *= damping;
+    ball.vy *= damping;
     if (contactType === "wall") {
       registerWallTouch(dot < 0);
     } else {
@@ -3049,10 +3166,6 @@
     return hoop.role === HOOP_ROLE.CURRENT || hoop.role === HOOP_ROLE.TARGET;
   }
 
-  function getShotPowerBoost(ratio) {
-    return 1 + (MAX_POWER_BOOST - 1) * Math.pow(ratio, 4);
-  }
-
   function hasBoard(hoop) {
     return Boolean(hoop.board);
   }
@@ -3156,6 +3269,7 @@
     drawActiveCoin();
     drawShotRings();
     drawParticles();
+    if (debugShots) drawDebugShots();
     if (drag && ball.held) drawTrajectory();
     drawBall();
     if (hoopSpritesReady) {
@@ -3669,8 +3783,9 @@
     const colors = skin.colors;
     const skinImage = getBallSkinImage(skin);
     ctx.save();
-    ctx.translate(ball.x, ball.y);
-    ctx.rotate(ball.rotation);
+    const renderPosition = getBallRenderPosition();
+    ctx.translate(renderPosition.x, renderPosition.y);
+    ctx.rotate(previousBallRender.rotation + (currentBallRender.rotation - previousBallRender.rotation) * renderAlpha);
 
     if (skinImage && skinImage.complete && skinImage.naturalWidth > 0) {
       const assetScale = ball.r / 27;
@@ -3803,45 +3918,45 @@
     return hoopSpriteState.ready && !hoopSpriteState.failed;
   }
 
+  function predictShot(pull, velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS)) {
+    return Physics.predictTrajectory(ball, velocity, FLIGHT_PARAMS, {
+      dotSteps: TRAJECTORY_DOT_STEPS,
+      pointCount: Math.round(7 + pull.ratio * 6),
+      maxPoints: 15
+    });
+  }
+
+  function drawTrajectoryPoints(prediction, ratio, colors) {
+    ctx.fillStyle = ratio > 0.72 ? colors.trajectoryHot : colors.trajectory;
+    prediction.points.forEach((point, i) => {
+      ctx.globalAlpha = 0.76 - i * (0.52 / point.pointCount);
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, Math.max(2.1, 4.2 - i * 0.16), 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function drawDebugShots() {
+    if (!debugShots.preview) return;
+    const colors = getCanvasTheme();
+    ctx.save();
+    drawTrajectoryPoints(debugShots.preview, debugShots.ratio, colors);
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = colors.trajectoryHot;
+    ctx.lineWidth = 1;
+    for (const point of debugShots.actual) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawTrajectory() {
     const colors = getCanvasTheme();
     const pull = getPullVector();
-    const impulse = LAUNCH_POWER_SCALE * TRAJECTORY_POWER_SCALE * getShotPowerBoost(pull.ratio);
-    const vx = pull.x * pull.power * impulse;
-    const vy = pull.y * pull.power * impulse;
-    let x = ball.x;
-    let y = ball.y;
-    let tx = vx;
-    let ty = vy;
     ctx.save();
-    let points = Math.round(7 + pull.ratio * 6);
-    const step = 0.045;
-    let bounceExtended = false;
-    ctx.fillStyle = pull.ratio > 0.72 ? colors.trajectoryHot : colors.trajectory;
-    for (let i = 0; i < points; i += 1) {
-      tx *= 0.996;
-      ty += GRAVITY * step;
-      x += tx * step;
-      y += ty * step;
-      let bounced = false;
-      if (x - ball.r < WALL_INSET) {
-        x = WALL_INSET + ball.r;
-        tx = Math.abs(tx) * 0.66;
-        bounced = true;
-      } else if (x + ball.r > WORLD_W - WALL_INSET) {
-        x = WORLD_W - WALL_INSET - ball.r;
-        tx = -Math.abs(tx) * 0.66;
-        bounced = true;
-      }
-      if (bounced && !bounceExtended) {
-        points = Math.min(15, Math.max(points, i + 4));
-        bounceExtended = true;
-      }
-      ctx.globalAlpha = 0.76 - i * (0.52 / points);
-      ctx.beginPath();
-      ctx.arc(x, y, Math.max(2.1, 4.2 - i * 0.16), 0, Math.PI * 2);
-      ctx.fill();
-    }
+    drawTrajectoryPoints(predictShot(pull), pull.ratio, colors);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = colors.trajectoryHot;
     ctx.lineWidth = 4 + pull.ratio * 2;
@@ -5240,6 +5355,7 @@
     if (animationFrameId !== null) window.cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
     lastTime = 0;
+    resetPhysicsClock();
   }
 
   function restartAnimationLoop() {
@@ -5283,12 +5399,53 @@
       stopAnimationLoop();
       return;
     }
-    const dt = firstPhysicsFrame ? 0 : Math.min(0.033, (now - lastTime) / 1000 || 0);
+    const frameSeconds = (now - lastTime) / 1000 || 0;
+    const dt = firstPhysicsFrame || frameSeconds > STALL_FRAME_DT ? 0 : Math.max(0, Math.min(MAX_FRAME_DT, frameSeconds));
     lastTime = now;
-    update(dt);
+    const cpuStart = perfStats ? performance.now() : 0;
+    const advanced = Physics.advanceFixedSteps(physicsAccumulator, dt, MAX_FRAME_DT, updateFixedStep);
+    physicsAccumulator = advanced.accumulator;
+    renderAlpha = advanced.alpha;
+    updatePresentation(dt);
     draw();
+    if (perfStats) recordPerfFrame(now, frameSeconds * 1000, performance.now() - cpuStart);
     if (generation !== animationLoopGeneration || !canRunAnimationLoop()) return;
     animationFrameId = window.requestAnimationFrame((nextNow) => loop(nextNow, generation, false));
+  }
+
+  function recordPerfFrame(now, frameMs, cpuMs) {
+    const preset = BALL_EFFECT_PRESETS[ballEffects.selectedPreset];
+    const flameOn = state === "playing" && !ball.held && !ball.settle && perfectChain >= (preset?.comboThreshold ?? 2);
+    const bucket = flameOn ? perfStats.fire : perfStats.normal;
+    if (frameMs > 0 && frameMs < STALL_FRAME_DT * 1000) {
+      bucket.frames += 1;
+      if (frameMs > 25) bucket.slow += 1;
+      bucket.worstMs = Math.max(bucket.worstMs, frameMs);
+      perfStats.worstMs = Math.max(perfStats.worstMs, frameMs);
+    }
+    perfStats.frames += 1;
+    perfStats.cpuMs += cpuMs;
+    perfStats.cpuMaxMs = Math.max(perfStats.cpuMaxMs, cpuMs);
+    if (now - perfStats.windowStart >= 1000) {
+      const seconds = (now - perfStats.windowStart) / 1000;
+      perfStats.line = Math.round(perfStats.frames / seconds) + " fps  worst " + perfStats.worstMs.toFixed(0)
+        + " ms  cpu " + (perfStats.cpuMs / perfStats.frames).toFixed(1) + "/" + perfStats.cpuMaxMs.toFixed(1) + " ms";
+      perfStats.windowStart = now;
+      perfStats.frames = 0;
+      perfStats.worstMs = 0;
+      perfStats.cpuMs = 0;
+      perfStats.cpuMaxMs = 0;
+    }
+    const describe = (b) => b.frames + " kare, " + b.slow + " yavaş, en kötü " + b.worstMs.toFixed(0) + " ms";
+    ctx.save();
+    ctx.font = "600 11px ui-monospace, monospace";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
+    ctx.fillRect(4, viewH - 58, 270, 54);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(perfStats.line + "  p" + particles.length + "  dpr" + dpr, 10, viewH - 42);
+    ctx.fillText("alev: " + describe(perfStats.fire), 10, viewH - 26);
+    ctx.fillText("normal: " + describe(perfStats.normal), 10, viewH - 10);
+    ctx.restore();
   }
 
   function bootGame() {
