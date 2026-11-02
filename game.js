@@ -22,6 +22,7 @@
   const customizeThemeButton = document.getElementById("customizeThemeButton");
   const settingsButton = document.getElementById("settingsButton");
   const settingsSoundButton = document.getElementById("settingsSoundButton");
+  const settingsHapticsButton = document.getElementById("settingsHapticsButton");
   const settingsDarkModeButton = document.getElementById("settingsDarkModeButton");
   const languageButton = document.getElementById("languageButton");
   const settingsBackButton = document.getElementById("settingsBackButton");
@@ -69,6 +70,7 @@
   const STORAGE_KEY = "hoop-flick-best";
   const DARK_MODE_KEY = "hoop-flick-dark-mode";
   const MUTED_KEY = "hoop-flick-muted";
+  const HAPTICS_KEY = "hoop-flick-haptics";
   const LANGUAGE_KEY = "hoop-flick-language";
   const BALL_SKIN_KEY = "hoop-flick-ball-skin";
   const THEME_KEY = "hoop-flick-theme";
@@ -128,6 +130,17 @@
   const STALL_FRAME_DT = 0.25;
   // Approach speed that separates a real impact from gravity pressing a resting/sliding ball.
   const SEGMENT_IMPACT_SPEED = 40;
+  // Feel tuning: sound, vibration, squash and shake only; never feeds back into physics.
+  const IMPACT_FEEDBACK_MIN_SPEED = 60;
+  const IMPACT_FEEDBACK_FULL_SPEED = 900;
+  const IMPACT_SOUND_COOLDOWN = 0.07;
+  const SQUASH_STIFFNESS = 900;
+  const SQUASH_DAMPING = 24;
+  const SQUASH_MAX = 0.26;
+  const AIM_SQUASH = 0.12;
+  const FLIGHT_STRETCH_MAX = 0.1;
+  const FLIGHT_STRETCH_SPEED = 14000;
+  const SCORE_SHAKE = Object.freeze({ basket: 2.5, perfect: 3.5, perStreak: 0.5, wall: 1, max: 6 });
   const Physics = globalThis.HoopFlickPhysics;
   const FLIGHT_PARAMS = Object.freeze({
     gravity: GRAVITY,
@@ -1166,6 +1179,7 @@
       shot: "ATIŞ",
       shotTimeRemaining: "Atış için {seconds} saniye kaldı",
       sound: "Ses",
+      haptics: "Titreşim",
       darkMode: "Karanlık Mod",
       language: "Dil",
       turkish: "Türkçe",
@@ -1316,6 +1330,7 @@
       shot: "SHOT",
       shotTimeRemaining: "{seconds} seconds remaining to shoot",
       sound: "Sound",
+      haptics: "Vibration",
       darkMode: "Dark Mode",
       language: "Language",
       turkish: "Turkish",
@@ -1346,6 +1361,10 @@
   let physicsAccumulator = 0;
   let renderAlpha = 0;
   let audioContext = null;
+  let audioOutput = null;
+  let noiseBuffer = null;
+  let lastHapticAt = -Infinity;
+  const lastImpactFeedbackAt = { rim: -Infinity, net: -Infinity, board: -Infinity, wall: -Infinity };
   let userPaused = false;
   let gameBooted = false;
   let animationFrameId = null;
@@ -1359,6 +1378,10 @@
   let saveDrainQueued = false;
   let settingsOrigin = "menu";
   let muted = readBooleanPreference(MUTED_KEY, false);
+  let hapticsEnabled = readBooleanPreference(HAPTICS_KEY, true);
+  // Desktop Chrome exposes vibrate() as a no-op, so also require a touch screen.
+  const canVibrate = typeof navigator !== "undefined" && typeof navigator.vibrate === "function" && navigator.maxTouchPoints > 0;
+  const reduceMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let darkMode = readBooleanPreference(DARK_MODE_KEY, false);
   let language = readLanguagePreference();
   let state = "menu";
@@ -1457,6 +1480,8 @@
 
   const previousBallRender = { x: ball.x, y: ball.y, rotation: ball.rotation };
   const currentBallRender = { ...previousBallRender };
+  // Visual-only squash/stretch spring: value > 0 stretches along angle, < 0 squashes.
+  const ballSquash = { value: 0, velocity: 0, angle: 0 };
   const debugShots = new URLSearchParams(window.location.search).get("debugShots") === "1"
     ? { preview: null, actual: [], steps: 0, recording: false, ratio: 0 }
     : null;
@@ -1565,6 +1590,9 @@
       debugShots.recording = false;
     }
     shake = 0;
+    ballSquash.value = 0;
+    ballSquash.velocity = 0;
+    for (const kind of Object.keys(lastImpactFeedbackAt)) lastImpactFeedbackAt[kind] = -Infinity;
     comboText = 0;
     perfectChain = 0;
     swishStreak = 0;
@@ -1733,6 +1761,7 @@
     gameOverOverlay.classList.add("active");
     syncUiState();
     playGameSound("gameover");
+    triggerHaptic([40, 60, 70], true);
     return true;
   }
 
@@ -2329,6 +2358,7 @@
       ball.vx = velocity.vx;
       ball.vy = velocity.vy;
       snapBallRender();
+      kickBallSquash(Math.atan2(velocity.vy, velocity.vx), 0.08 + pull.ratio * 0.12);
       if (debugShots) {
         debugShots.preview = predictShot(pull, velocity);
         debugShots.actual = [];
@@ -2349,7 +2379,8 @@
       const currentHoop = getHoopById(currentHoopId);
       if (currentHoop) playHoopReleaseAnimation(currentHoop, pull);
       emitShotRings(pull);
-      playGameSound("shot");
+      playGameSound("shot", { power: pull.ratio });
+      triggerHaptic(Math.round(6 + pull.ratio * 8));
     }
     clearPointerDrag(event.pointerId);
   }
@@ -2562,6 +2593,7 @@
       hoop.releaseAnimation = Math.max(0, hoop.releaseAnimation - dt);
     }
 
+    updateBallSquash(dt);
     if (state === "playing") {
       const cameraTarget = previousTargetCameraY + (targetCameraY - previousTargetCameraY) * renderAlpha;
       cameraY += (cameraTarget - cameraY) * (1 - Math.pow(1 - 4.2 / 60, dt * 60));
@@ -2607,7 +2639,10 @@
     ball.vy = flight.vy;
 
     detectActiveCoinCollection(flight.preWallX);
-    if (flight.wallHit) registerWallTouch(true);
+    if (flight.wallHit) {
+      registerWallTouch(true);
+      onBallImpact(Math.sign(flight.vx), 0, Math.abs(flight.vx) / WALL_RESTITUTION, "wall");
+    }
 
     updateLaunchHoopSafety();
     detectHoopState();
@@ -2673,6 +2708,7 @@
     };
     airborneTime = 0;
     snapBallRender();
+    kickBallSquash(Math.PI * 0.5, -0.14);
     if (debugShots) debugShots.recording = false;
   }
 
@@ -2842,7 +2878,7 @@
         ball.vx = correctedVelocity.x;
         ball.vy = correctedVelocity.y;
         ball.touchedHoop = true;
-        playGameSound("rim");
+        onBallImpact(-Math.sin(hoop.rotation), Math.cos(hoop.rotation), Math.abs(localVelocity.y), "rim");
       }
     }
   }
@@ -2872,6 +2908,7 @@
     const damping = dot < -SEGMENT_IMPACT_SPEED ? 0.96 : Math.pow(0.96, dt * 60);
     ball.vx *= damping;
     ball.vy *= damping;
+    if (dot < -SEGMENT_IMPACT_SPEED) onBallImpact(nx, ny, -dot, contactType === "wall" ? "board" : "net");
     if (contactType === "wall") {
       registerWallTouch(dot < 0);
     } else {
@@ -2895,12 +2932,83 @@
       ball.vx -= (1 + bounce) * dot * nx;
       ball.vy -= (1 + bounce) * dot * ny;
       ball.touchedHoop = true;
-      playGameSound("rim");
+      onBallImpact(nx, ny, -dot, "rim");
+    }
+  }
+
+  // One entry point for impact feel (sound, vibration, squash), fired from collisions.
+  function onBallImpact(nx, ny, speed, kind) {
+    if (!(speed >= IMPACT_FEEDBACK_MIN_SPEED)) return;
+    const strength = clamp((speed - IMPACT_FEEDBACK_MIN_SPEED) / (IMPACT_FEEDBACK_FULL_SPEED - IMPACT_FEEDBACK_MIN_SPEED), 0, 1);
+    kickBallSquash(Math.atan2(ny, nx), -(0.05 + strength * 0.19));
+    // simulationTime restarts at 0 each run, so a negative gap means a new run, not a repeat.
+    const sinceLast = simulationTime - lastImpactFeedbackAt[kind];
+    if (sinceLast >= 0 && sinceLast < IMPACT_SOUND_COOLDOWN) return;
+    lastImpactFeedbackAt[kind] = simulationTime;
+    playGameSound(kind, { strength });
+    if (strength > 0.25) triggerHaptic(kind === "rim" ? 10 : 8);
+  }
+
+  function kickBallSquash(angle, amount) {
+    if (Math.abs(amount) < Math.abs(ballSquash.value)) return;
+    ballSquash.angle = angle;
+    ballSquash.value = clamp(amount, -SQUASH_MAX, SQUASH_MAX);
+    ballSquash.velocity = 0;
+  }
+
+  function updateBallSquash(dt) {
+    let target = 0;
+    if (drag && ball.held) {
+      const pull = getPullVector();
+      if (pull.len > 0) {
+        ballSquash.angle = Math.atan2(pull.y, pull.x);
+        target = -AIM_SQUASH * pull.ratio;
+      }
+    }
+    for (let remaining = dt; remaining > 0; remaining -= 1 / 240) {
+      const step = Math.min(remaining, 1 / 240);
+      ballSquash.velocity += (-SQUASH_STIFFNESS * (ballSquash.value - target) - SQUASH_DAMPING * ballSquash.velocity) * step;
+      ballSquash.value = clamp(ballSquash.value + ballSquash.velocity * step, -SQUASH_MAX, SQUASH_MAX);
+    }
+  }
+
+  function applyBallSquash() {
+    if (Math.abs(ballSquash.value) > 0.001) {
+      const stretch = 1 + ballSquash.value;
+      ctx.rotate(ballSquash.angle);
+      ctx.scale(stretch, 1 / stretch);
+      ctx.rotate(-ballSquash.angle);
+    }
+    if (state === "playing" && !ball.held && !ball.settle) {
+      const speed = Math.hypot(ball.vx, ball.vy);
+      const stretch = 1 + Math.min(FLIGHT_STRETCH_MAX, speed / FLIGHT_STRETCH_SPEED);
+      const angle = Math.atan2(ball.vy, ball.vx);
+      ctx.rotate(angle);
+      ctx.scale(stretch, 1 / stretch);
+      ctx.rotate(-angle);
+    }
+  }
+
+  function bumpScoreHud(strong) {
+    scoreValue.classList.remove("scoreBump", "scoreBumpStrong");
+    void scoreValue.offsetWidth;
+    scoreValue.classList.add(strong ? "scoreBumpStrong" : "scoreBump");
+  }
+
+  // Priority patterns (score, game over) bypass the rate limit so a rim tick can't swallow them.
+  function triggerHaptic(pattern, priority) {
+    if (!canVibrate || !hapticsEnabled || userPaused) return;
+    const now = performance.now();
+    if (!priority && now - lastHapticAt < 50) return;
+    lastHapticAt = now;
+    try {
+      navigator.vibrate(pattern);
+    } catch (error) {
+      // Some browsers block vibration outside a user gesture.
     }
   }
 
   function registerWallTouch(countBounce) {
-    if (!ball.touchedWall) playGameSound("wall");
     if (countBounce) ball.wallBounceCount = addSafeStat(ball.wallBounceCount, 1);
     ball.touchedWall = true;
   }
@@ -2978,12 +3086,17 @@
       writeBestScore(best);
     }
     updateScore();
-    shake = 5;
+    bumpScoreHud(wasPerfect);
+    const resultShake = wasPerfect
+      ? SCORE_SHAKE.perfect + Math.min(swishStreak, 6) * SCORE_SHAKE.perStreak
+      : SCORE_SHAKE.basket;
+    shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
     comboText = usedWall || wasPerfect ? 1.5 : 1.0;
     scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain);
     playGameSound(wasPerfect ? "swish" : "basket");
     if (usedWall) playGameSound("wallBonus");
     if (wasPerfect && swishStreak > 1) playGameSound("combo", { streak: swishStreak });
+    triggerHaptic(!wasPerfect ? 16 : swishStreak >= 3 ? [12, 30, 12, 30, 24] : [12, 40, 18], true);
     burst(hoop.x, hoop.y);
     triggerHoopScoreEffect(hoop, { swish: wasPerfect, wall: usedWall });
     hoop.moving = false;
@@ -3785,6 +3898,7 @@
     ctx.save();
     const renderPosition = getBallRenderPosition();
     ctx.translate(renderPosition.x, renderPosition.y);
+    applyBallSquash();
     ctx.rotate(previousBallRender.rotation + (currentBallRender.rotation - previousBallRender.rotation) * renderAlpha);
 
     if (skinImage && skinImage.complete && skinImage.naturalWidth > 0) {
@@ -4157,23 +4271,41 @@
       playTone(260, 0.09, "triangle", 0.03, 0, 420);
       playTone(520, 0.12, "sine", 0.026, 0.07, 720);
     } else if (name === "shot") {
-      playTone(520, 0.07, "triangle", 0.025, 0, 290);
+      const power = clamp(Number(detail.power) || 0, 0, 1);
+      playNoise(0.16, 0.035 + power * 0.06, "bandpass", 700, 2600, 1.2);
+      playTone(520, 0.07, "triangle", 0.018, 0, 290);
     } else if (name === "rim") {
-      playTone(230, 0.045, "triangle", 0.015, 0, 170);
-    } else if (name === "wall") {
-      playTone(170, 0.055, "square", 0.012, 0, 120);
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      const base = 500 + Math.random() * 60;
+      const level = 0.012 + strength * 0.04;
+      playTone(base, 0.24, "sine", level * 0.55, 0, base * 0.985);
+      playTone(base * 2.76, 0.15, "sine", level * 0.3, 0, base * 2.72);
+      playTone(base * 5.4, 0.08, "sine", level * 0.16, 0, base * 5.3);
+      playNoise(0.03, level * 0.7, "highpass", 2600, 0, 0.7);
+    } else if (name === "net") {
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      playNoise(0.12, 0.01 + strength * 0.03, "bandpass", 2200, 1400, 0.9);
+    } else if (name === "board" || name === "wall") {
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      const pitch = name === "board" ? 150 : 120;
+      playTone(pitch, 0.09, "triangle", 0.018 + strength * 0.035, 0, pitch * 0.55);
+      playNoise(0.06, 0.02 + strength * 0.04, "lowpass", 900, 300, 0.7);
     } else if (name === "basket") {
-      playTone(480, 0.09, "sine", 0.03, 0, 560);
-      playTone(720, 0.12, "sine", 0.022, 0.055, 820);
+      playNoise(0.22, 0.045, "bandpass", 2400, 1200, 1);
+      playTone(480, 0.09, "sine", 0.026, 0, 560);
+      playTone(720, 0.12, "sine", 0.019, 0.055, 820);
     } else if (name === "swish") {
-      playTone(620, 0.1, "sine", 0.032, 0, 760);
-      playTone(930, 0.14, "sine", 0.024, 0.045, 1120);
+      playNoise(0.32, 0.07, "bandpass", 3200, 1300, 1.1);
+      playTone(620, 0.1, "sine", 0.026, 0.02, 760);
+      playTone(930, 0.14, "sine", 0.02, 0.065, 1120);
     } else if (name === "wallBonus") {
       playTone(340, 0.08, "triangle", 0.022, 0, 510);
       playTone(680, 0.12, "sine", 0.02, 0.065, 880);
     } else if (name === "combo") {
-      const comboPitch = 720 + Math.min(detail.streak || 1, 10) * 28;
-      playTone(comboPitch, 0.1, "sine", 0.018, 0.1, comboPitch + 110);
+      const root = 523 * Math.pow(2, Math.min(detail.streak || 1, 10) / 12);
+      playTone(root, 0.11, "sine", 0.016, 0.1, root * 1.02);
+      playTone(root * 1.25, 0.11, "sine", 0.015, 0.15, root * 1.27);
+      playTone(root * 1.5, 0.16, "sine", 0.015, 0.2, root * 1.52);
     } else if (name === "countdownTick") {
       const remainingSeconds = clamp(Math.floor(Number(detail.seconds) || 1), 1, 5);
       const tickPitch = 520 + (5 - remainingSeconds) * 55;
@@ -5197,12 +5329,24 @@
     }
   }
 
+  function toggleHaptics() {
+    if (!gameBooted) return;
+    hapticsEnabled = !hapticsEnabled;
+    writeBooleanPreference(HAPTICS_KEY, hapticsEnabled);
+    syncControlLabels();
+    triggerHaptic(20);
+    playGameSound("button");
+  }
+
   function syncControlLabels() {
     const soundEnabled = !muted;
     const enabledLabel = darkMode ? t("on") : t("off");
     const darkLabel = t("darkMode") + ": " + enabledLabel;
     settingsSoundButton.setAttribute("aria-pressed", String(soundEnabled));
     settingsSoundButton.textContent = t("sound") + ": " + (soundEnabled ? t("on") : t("off"));
+    settingsHapticsButton.hidden = !canVibrate;
+    settingsHapticsButton.setAttribute("aria-pressed", String(hapticsEnabled));
+    settingsHapticsButton.textContent = t("haptics") + ": " + (hapticsEnabled ? t("on") : t("off"));
     settingsDarkModeButton.setAttribute("aria-pressed", String(darkMode));
     settingsDarkModeButton.textContent = darkLabel;
     languageButton.textContent = t("language") + ": " + (language === "tr" ? t("turkish") : t("english"));
@@ -5388,9 +5532,51 @@
     amp.gain.linearRampToValueAtTime(gain, now + 0.01);
     amp.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.connect(amp);
-    amp.connect(audioContext.destination);
+    amp.connect(getAudioOutput());
     osc.start(now);
     osc.stop(now + duration + 0.02);
+  }
+
+  function playNoise(duration, gain, filterType, freq, endFreq, q, delay) {
+    if (muted || userPaused || !audioContext) return;
+    if (!noiseBuffer) {
+      noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+      const samples = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i += 1) samples[i] = Math.random() * 2 - 1;
+    }
+    const now = audioContext.currentTime + (delay || 0);
+    const source = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const amp = audioContext.createGain();
+    source.buffer = noiseBuffer;
+    filter.type = filterType;
+    filter.Q.value = q;
+    filter.frequency.setValueAtTime(freq, now);
+    if (endFreq) filter.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+    amp.gain.setValueAtTime(0, now);
+    amp.gain.linearRampToValueAtTime(gain, now + 0.006);
+    amp.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    source.connect(filter);
+    filter.connect(amp);
+    amp.connect(getAudioOutput());
+    source.start(now, Math.random() * 0.6);
+    source.stop(now + duration + 0.02);
+  }
+
+  // Shared output with a gentle compressor so stacked impact sounds don't clip.
+  function getAudioOutput() {
+    if (!audioOutput) {
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.value = -18;
+      compressor.knee.value = 12;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.12;
+      compressor.connect(audioContext.destination);
+      audioOutput = audioContext.createGain();
+      audioOutput.connect(compressor);
+    }
+    return audioOutput;
   }
 
   function loop(now, generation, firstPhysicsFrame) {
@@ -5491,6 +5677,7 @@
   if (customizeThemeButton) customizeThemeButton.addEventListener("click", () => openMenuPanel("theme"));
   settingsButton.addEventListener("click", () => openMenuPanel("settings"));
   settingsSoundButton.addEventListener("click", toggleSound);
+  settingsHapticsButton.addEventListener("click", toggleHaptics);
   settingsDarkModeButton.addEventListener("click", toggleDarkMode);
   languageButton.addEventListener("click", toggleLanguage);
   settingsBackButton.addEventListener("click", closeSettings);

@@ -209,7 +209,8 @@ test('render interpolation is separate from collision history and snaps on settl
   `);
   const snapshot = g.evaluate('({ previous: {...previousBallRender}, current: {...currentBallRender}, prevX: ball.prevX })');
   const translate = g.calls.find(call => call[0] === 'translate');
-  const rotate = g.calls.find(call => call[0] === 'rotate');
+  // Squash/stretch rotates in and out of its own axis first; the ball spin is the last rotate.
+  const rotate = g.calls.filter(call => call[0] === 'rotate').at(-1);
   assert.equal(translate[1], (snapshot.previous.x + snapshot.current.x) / 2);
   assert.equal(translate[2], (snapshot.previous.y + snapshot.current.y) / 2);
   assert.equal(rotate[1], (snapshot.previous.rotation + snapshot.current.rotation) / 2);
@@ -398,4 +399,71 @@ test('a release between fixed steps still follows the preview exactly', () => {
     assert.equal(actual[i].x, point.x);
     assert.equal(actual[i].y, point.y);
   });
+});
+
+test('impact feel ignores resting contact and fires once per impact cooldown', () => {
+  const g = loadGame();
+  const squash = (code) => JSON.parse(g.evaluate(`${code}; JSON.stringify(ballSquash)`));
+  assert.equal(squash('onBallImpact(0, -1, 30, "rim")').value, 0);
+  const hit = squash('simulationTime = 1; onBallImpact(0, -1, 600, "rim")');
+  assert.ok(hit.value < -0.1, `hard rim hit should squash, got ${hit.value}`);
+  assert.equal(g.evaluate('lastImpactFeedbackAt.rim'), 1);
+  g.evaluate('simulationTime = 1.03; onBallImpact(0, -1, 600, "rim")');
+  assert.equal(g.evaluate('lastImpactFeedbackAt.rim'), 1);
+  g.evaluate('simulationTime = 1.2; onBallImpact(0, -1, 600, "rim")');
+  assert.equal(g.evaluate('lastImpactFeedbackAt.rim'), 1.2);
+});
+
+test('impact feel never changes the ball: collisions match with feedback disabled', () => {
+  const run = (disable) => {
+    const g = loadGame();
+    return g.evaluate(`
+      const kinds = new Set();
+      const feedback = onBallImpact;
+      onBallImpact = (...args) => { if (args[2] >= IMPACT_FEEDBACK_MIN_SPEED) kinds.add(args[3]); if (!${disable}) feedback(...args); };
+      scoreTargetHoop = () => { ball.held = true; };
+      state = 'playing';
+      hoops = [makeHoop(210, 600, 0, null), makeHoop(330, 420, 1, null)];
+      currentHoopId = 0;
+      targetHoopId = 1;
+      setHoopRoles(0, 1);
+      Object.assign(ball, { x: 210, y: 590, vx: 100, vy: -1300, held: false, launchHoopId: 0, angularVelocity: 6 });
+      snapBallRender();
+      const path = [];
+      for (let i = 0; i < 300 && !ball.held; i += 1) {
+        updateFixedStep(Physics.FIXED_DT);
+        path.push(ball.x, ball.y, ball.vx, ball.vy);
+      }
+      JSON.stringify({ path, kinds: [...kinds].sort() });
+    `);
+  };
+  const withFeedback = run(false);
+  assert.deepEqual(JSON.parse(withFeedback).kinds, ['rim', 'wall'], 'shot must hit a rim and a wall');
+  assert.equal(withFeedback, run(true));
+});
+
+test('squash spring settles back to round and stays bounded', () => {
+  const g = loadGame();
+  g.evaluate('kickBallSquash(0.4, -0.5)');
+  assert.equal(g.evaluate('ballSquash.value'), -0.26);
+  for (let i = 0; i < 60; i += 1) g.evaluate('updatePresentation(1 / 60)');
+  assert.ok(Math.abs(g.evaluate('ballSquash.value')) < 0.005);
+  g.evaluate('kickBallSquash(0, 0.2); updatePresentation(0.1)');
+  const value = g.evaluate('ballSquash.value');
+  assert.ok(Math.abs(value) <= 0.26 && Number.isFinite(value));
+});
+
+test('impact sounds still fire right after a restart rewinds the clock', () => {
+  const g = loadGame();
+  g.evaluate(`
+    const sounds = [];
+    playGameSound = (name) => sounds.push(name);
+    globalThis.__sounds = sounds;
+    simulationTime = 40;
+    onBallImpact(0, -1, 600, "rim");
+    resetGame(false);
+    simulationTime = 0.02;
+    onBallImpact(0, -1, 600, "rim");
+  `);
+  assert.equal(g.evaluate('JSON.stringify(__sounds.filter(name => name === "rim"))'), '["rim","rim"]');
 });
