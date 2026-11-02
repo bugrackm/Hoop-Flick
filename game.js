@@ -22,6 +22,7 @@
   const customizeThemeButton = document.getElementById("customizeThemeButton");
   const settingsButton = document.getElementById("settingsButton");
   const settingsSoundButton = document.getElementById("settingsSoundButton");
+  const settingsHapticsButton = document.getElementById("settingsHapticsButton");
   const settingsDarkModeButton = document.getElementById("settingsDarkModeButton");
   const languageButton = document.getElementById("languageButton");
   const settingsBackButton = document.getElementById("settingsBackButton");
@@ -69,6 +70,7 @@
   const STORAGE_KEY = "hoop-flick-best";
   const DARK_MODE_KEY = "hoop-flick-dark-mode";
   const MUTED_KEY = "hoop-flick-muted";
+  const HAPTICS_KEY = "hoop-flick-haptics";
   const LANGUAGE_KEY = "hoop-flick-language";
   const BALL_SKIN_KEY = "hoop-flick-ball-skin";
   const THEME_KEY = "hoop-flick-theme";
@@ -128,6 +130,21 @@
   const STALL_FRAME_DT = 0.25;
   // Approach speed that separates a real impact from gravity pressing a resting/sliding ball.
   const SEGMENT_IMPACT_SPEED = 40;
+  // Feel tuning: sound, vibration, squash and shake only; never feeds back into physics.
+  const IMPACT_FEEDBACK_MIN_SPEED = 60;
+  const IMPACT_FEEDBACK_FULL_SPEED = 900;
+  const IMPACT_SOUND_COOLDOWN = 0.07;
+  const SQUASH_STIFFNESS = 900;
+  const SQUASH_DAMPING = 18;
+  const SQUASH_MAX = 0.4;
+  const AIM_SQUASH = 0.22;
+  const FLIGHT_STRETCH_MAX = 0.18;
+  const FLIGHT_STRETCH_SPEED = 7500;
+  const MAX_FLAME_PARTICLES = 90;
+  const FLAME_TRAIL_LIFE = 0.22;
+  const FLAME_TRAIL_SPACING = 6;
+  const FLAME_TRAIL_MAX_LENGTH = 120;
+  const SCORE_SHAKE = Object.freeze({ basket: 2.5, perfect: 3.5, perStreak: 0.5, wall: 1, max: 6 });
   const Physics = globalThis.HoopFlickPhysics;
   const FLIGHT_PARAMS = Object.freeze({
     gravity: GRAVITY,
@@ -1166,6 +1183,7 @@
       shot: "ATIŞ",
       shotTimeRemaining: "Atış için {seconds} saniye kaldı",
       sound: "Ses",
+      haptics: "Titreşim",
       darkMode: "Karanlık Mod",
       language: "Dil",
       turkish: "Türkçe",
@@ -1316,6 +1334,7 @@
       shot: "SHOT",
       shotTimeRemaining: "{seconds} seconds remaining to shoot",
       sound: "Sound",
+      haptics: "Vibration",
       darkMode: "Dark Mode",
       language: "Language",
       turkish: "Turkish",
@@ -1346,6 +1365,10 @@
   let physicsAccumulator = 0;
   let renderAlpha = 0;
   let audioContext = null;
+  let audioOutput = null;
+  let noiseBuffer = null;
+  let lastHapticAt = -Infinity;
+  const lastImpactFeedbackAt = { rim: -Infinity, net: -Infinity, board: -Infinity, wall: -Infinity };
   let userPaused = false;
   let gameBooted = false;
   let animationFrameId = null;
@@ -1359,6 +1382,10 @@
   let saveDrainQueued = false;
   let settingsOrigin = "menu";
   let muted = readBooleanPreference(MUTED_KEY, false);
+  let hapticsEnabled = readBooleanPreference(HAPTICS_KEY, true);
+  // Desktop Chrome exposes vibrate() as a no-op, so also require a touch screen.
+  const canVibrate = typeof navigator !== "undefined" && typeof navigator.vibrate === "function" && navigator.maxTouchPoints > 0;
+  const reduceMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let darkMode = readBooleanPreference(DARK_MODE_KEY, false);
   let language = readLanguagePreference();
   let state = "menu";
@@ -1431,8 +1458,7 @@
   let ownedThemes = new Set(["gym"]);
   const economyStatusTimers = { ball: null, theme: null };
   const ballEffects = {
-    selectedPreset: BALL_SKINS[selectedBallSkinId]?.effectPreset || "classic",
-    trailCooldown: 0
+    selectedPreset: BALL_SKINS[selectedBallSkinId]?.effectPreset || "classic"
   };
 
   const ball = {
@@ -1457,6 +1483,13 @@
 
   const previousBallRender = { x: ball.x, y: ball.y, rotation: ball.rotation };
   const currentBallRender = { ...previousBallRender };
+  // Visual-only squash/stretch spring: value > 0 stretches along angle, < 0 squashes.
+  const ballSquash = { value: 0, velocity: 0, angle: 0 };
+  const flameTrail = [];
+  let flameClock = 0;
+  let flameLickTimer = 0;
+  const glowSprites = new Map();
+  const flameStyles = new Map();
   const debugShots = new URLSearchParams(window.location.search).get("debugShots") === "1"
     ? { preview: null, actual: [], steps: 0, recording: false, ratio: 0 }
     : null;
@@ -1565,6 +1598,9 @@
       debugShots.recording = false;
     }
     shake = 0;
+    ballSquash.value = 0;
+    ballSquash.velocity = 0;
+    for (const kind of Object.keys(lastImpactFeedbackAt)) lastImpactFeedbackAt[kind] = -Infinity;
     comboText = 0;
     perfectChain = 0;
     swishStreak = 0;
@@ -1691,7 +1727,6 @@
     ball.angularVelocity = 0;
     ball.settle = null;
     ball.launchHoopId = -1;
-    ballEffects.trailCooldown = 0;
     airborneTime = 0;
     snapBallRender();
     if (debugShots) debugShots.recording = false;
@@ -1733,6 +1768,7 @@
     gameOverOverlay.classList.add("active");
     syncUiState();
     playGameSound("gameover");
+    triggerHaptic([40, 60, 70], true);
     return true;
   }
 
@@ -2329,6 +2365,7 @@
       ball.vx = velocity.vx;
       ball.vy = velocity.vy;
       snapBallRender();
+      kickBallSquash(Math.atan2(velocity.vy, velocity.vx), 0.14 + pull.ratio * 0.2);
       if (debugShots) {
         debugShots.preview = predictShot(pull, velocity);
         debugShots.actual = [];
@@ -2349,7 +2386,8 @@
       const currentHoop = getHoopById(currentHoopId);
       if (currentHoop) playHoopReleaseAnimation(currentHoop, pull);
       emitShotRings(pull);
-      playGameSound("shot");
+      playGameSound("shot", { power: pull.ratio });
+      triggerHaptic(Math.round(6 + pull.ratio * 8));
     }
     clearPointerDrag(event.pointerId);
   }
@@ -2562,10 +2600,11 @@
       hoop.releaseAnimation = Math.max(0, hoop.releaseAnimation - dt);
     }
 
+    updateBallSquash(dt);
     if (state === "playing") {
       const cameraTarget = previousTargetCameraY + (targetCameraY - previousTargetCameraY) * renderAlpha;
       cameraY += (cameraTarget - cameraY) * (1 - Math.pow(1 - 4.2 / 60, dt * 60));
-      if (!ball.held && !ball.settle) updateBallEffects(dt);
+      updateBallEffects(dt, !ball.held && !ball.settle);
     }
 
     particles = particles.filter((p) => p.life > 0);
@@ -2607,7 +2646,10 @@
     ball.vy = flight.vy;
 
     detectActiveCoinCollection(flight.preWallX);
-    if (flight.wallHit) registerWallTouch(true);
+    if (flight.wallHit) {
+      registerWallTouch(true);
+      onBallImpact(Math.sign(flight.vx), 0, Math.abs(flight.vx) / WALL_RESTITUTION, "wall");
+    }
 
     updateLaunchHoopSafety();
     detectHoopState();
@@ -2673,6 +2715,7 @@
     };
     airborneTime = 0;
     snapBallRender();
+    kickBallSquash(Math.PI * 0.5, -0.26);
     if (debugShots) debugShots.recording = false;
   }
 
@@ -2720,51 +2763,6 @@
     const clearedSide = Math.abs(localBall.x) > launchHoop.w * 0.5 + safeMargin;
     const clearedBelow = localBall.y > 62 + safeMargin;
     if (clearedAbove || clearedSide || clearedBelow) ball.launchHoopId = -1;
-  }
-
-  function updateBallEffects(dt) {
-    const preset = BALL_EFFECT_PRESETS[ballEffects.selectedPreset];
-    const comboThreshold = preset?.comboThreshold ?? 2;
-    if (!preset || perfectChain < comboThreshold) return;
-
-    ballEffects.trailCooldown -= dt;
-    if (ballEffects.trailCooldown > 0) return;
-    ballEffects.trailCooldown = preset.trailInterval ?? 0.045;
-    emitPerfectFlameTrail(preset);
-  }
-
-  function emitPerfectFlameTrail(preset) {
-    // Spawn behind the ball as drawn (interpolated), not the latest physics step.
-    const origin = getBallRenderPosition();
-    const velocityLength = Math.hypot(ball.vx, ball.vy) || 1;
-    const backX = -ball.vx / velocityLength;
-    const backY = -ball.vy / velocityLength;
-    const sideX = -backY;
-    const sideY = backX;
-    const colors = preset.perfectFlameColors || preset.trailColors;
-    const intensity = preset.perfectFlameIntensity || 1;
-    const count = Math.max(2, Math.round(2 + intensity * 2));
-    for (let i = 0; i < count; i += 1) {
-      const spread = random(-ball.r * 0.42, ball.r * 0.42);
-      const trailDistance = random(ball.r * 0.5, ball.r * (1.4 + intensity * 0.5));
-      const speed = random(28, 88) * intensity;
-      const life = random((preset.perfectFlameLifetime || 0.34) * 0.72, preset.perfectFlameLifetime || 0.34);
-      pushParticle({
-        type: "flame",
-        shape: preset.perfectFlameShape || "flame",
-        x: origin.x + backX * trailDistance + sideX * spread,
-        y: origin.y + backY * trailDistance + sideY * spread,
-        vx: backX * speed + sideX * random(-18, 18),
-        vy: backY * speed + sideY * random(-18, 18),
-        gravity: preset.gravityModifier !== undefined ? preset.gravityModifier * 0.28 : 24,
-        shrinkRate: (preset.shrinkRate || 12) * 0.45,
-        life,
-        maxLife: life,
-        size: random((preset.perfectFlameSize || 9) * 0.55, preset.perfectFlameSize || 9),
-        color: colors[Math.floor(Math.random() * colors.length)],
-        angle: Math.atan2(backY, backX)
-      });
-    }
   }
 
   function showRetry() {
@@ -2842,7 +2840,7 @@
         ball.vx = correctedVelocity.x;
         ball.vy = correctedVelocity.y;
         ball.touchedHoop = true;
-        playGameSound("rim");
+        onBallImpact(-Math.sin(hoop.rotation), Math.cos(hoop.rotation), Math.abs(localVelocity.y), "rim");
       }
     }
   }
@@ -2872,6 +2870,7 @@
     const damping = dot < -SEGMENT_IMPACT_SPEED ? 0.96 : Math.pow(0.96, dt * 60);
     ball.vx *= damping;
     ball.vy *= damping;
+    if (dot < -SEGMENT_IMPACT_SPEED) onBallImpact(nx, ny, -dot, contactType === "wall" ? "board" : "net");
     if (contactType === "wall") {
       registerWallTouch(dot < 0);
     } else {
@@ -2895,12 +2894,416 @@
       ball.vx -= (1 + bounce) * dot * nx;
       ball.vy -= (1 + bounce) * dot * ny;
       ball.touchedHoop = true;
-      playGameSound("rim");
+      onBallImpact(nx, ny, -dot, "rim");
     }
   }
 
+  // One entry point for impact feel (sound, vibration, squash), fired from collisions.
+  function onBallImpact(nx, ny, speed, kind) {
+    if (!(speed >= IMPACT_FEEDBACK_MIN_SPEED)) return;
+    const strength = clamp((speed - IMPACT_FEEDBACK_MIN_SPEED) / (IMPACT_FEEDBACK_FULL_SPEED - IMPACT_FEEDBACK_MIN_SPEED), 0, 1);
+    kickBallSquash(Math.atan2(ny, nx), -(0.1 + strength * 0.26));
+    // simulationTime restarts at 0 each run, so a negative gap means a new run, not a repeat.
+    const sinceLast = simulationTime - lastImpactFeedbackAt[kind];
+    if (sinceLast >= 0 && sinceLast < IMPACT_SOUND_COOLDOWN) return;
+    lastImpactFeedbackAt[kind] = simulationTime;
+    emitImpactBurst(ball.x - nx * ball.r, ball.y - ny * ball.r, nx, ny, strength, kind);
+    playGameSound(kind, { strength });
+    if (strength > 0.25) triggerHaptic(kind === "rim" ? 10 : 8);
+  }
+
+  function kickBallSquash(angle, amount) {
+    if (Math.abs(amount) < Math.abs(ballSquash.value)) return;
+    ballSquash.angle = angle;
+    ballSquash.value = clamp(amount, -SQUASH_MAX, SQUASH_MAX);
+    ballSquash.velocity = 0;
+  }
+
+  function updateBallSquash(dt) {
+    let target = 0;
+    if (drag && ball.held) {
+      const pull = getPullVector();
+      if (pull.len > 0) {
+        ballSquash.angle = Math.atan2(pull.y, pull.x);
+        target = -AIM_SQUASH * pull.ratio;
+      }
+    }
+    for (let remaining = dt; remaining > 0; remaining -= 1 / 240) {
+      const step = Math.min(remaining, 1 / 240);
+      ballSquash.velocity += (-SQUASH_STIFFNESS * (ballSquash.value - target) - SQUASH_DAMPING * ballSquash.velocity) * step;
+      ballSquash.value = clamp(ballSquash.value + ballSquash.velocity * step, -SQUASH_MAX, SQUASH_MAX);
+    }
+  }
+
+  function applyBallSquash() {
+    if (Math.abs(ballSquash.value) > 0.001) {
+      const stretch = 1 + ballSquash.value;
+      ctx.rotate(ballSquash.angle);
+      ctx.scale(stretch, 1 / stretch);
+      ctx.rotate(-ballSquash.angle);
+    }
+    if (state === "playing" && !ball.held && !ball.settle) {
+      const speed = Math.hypot(ball.vx, ball.vy);
+      const stretch = 1 + Math.min(FLIGHT_STRETCH_MAX, speed / FLIGHT_STRETCH_SPEED);
+      const angle = Math.atan2(ball.vy, ball.vx);
+      ctx.rotate(angle);
+      ctx.scale(stretch, 1 / stretch);
+      ctx.rotate(-angle);
+    }
+  }
+
+  function bumpScoreHud(strong) {
+    scoreValue.classList.remove("scoreBump", "scoreBumpStrong");
+    void scoreValue.offsetWidth;
+    scoreValue.classList.add(strong ? "scoreBumpStrong" : "scoreBump");
+  }
+
+  // Priority patterns (score, game over) bypass the rate limit so a rim tick can't swallow them.
+  function triggerHaptic(pattern, priority) {
+    if (!canVibrate || !hapticsEnabled || userPaused) return;
+    const now = performance.now();
+    if (!priority && now - lastHapticAt < 50) return;
+    lastHapticAt = now;
+    try {
+      navigator.vibrate(pattern);
+    } catch (error) {
+      // Some browsers block vibration outside a user gesture.
+    }
+  }
+
+  function emitImpactBurst(x, y, nx, ny, strength, kind) {
+    if (kind === "rim") {
+      const colors = ["#fff4d6", "#ffc46b", "#ff8a2e"];
+      const count = 3 + Math.round(strength * 5);
+      for (let i = 0; i < count; i += 1) {
+        const angle = Math.atan2(ny, nx) + random(-1.1, 1.1);
+        const speed = random(120, 260) * (0.6 + strength);
+        pushParticle({
+          type: "spark",
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          gravity: 620,
+          shrinkRate: 0,
+          life: random(0.18, 0.32),
+          maxLife: 0.32,
+          size: random(1.6, 2.6),
+          color: colors[i % colors.length]
+        });
+      }
+    } else if (kind === "wall" || kind === "board") {
+      const count = 4 + Math.round(strength * 4);
+      for (let i = 0; i < count; i += 1) {
+        const angle = Math.atan2(ny, nx) + random(-1.3, 1.3);
+        const speed = random(30, 90) * (0.6 + strength);
+        pushParticle({
+          type: "dust",
+          x: x + random(-3, 3),
+          y: y + random(-6, 6),
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 12,
+          gravity: -30,
+          shrinkRate: 0,
+          life: random(0.3, 0.45),
+          maxLife: 0.45,
+          size: random(3.5, 6.5) * (0.8 + strength * 0.5),
+          color: "#c9b8a6"
+        });
+      }
+    }
+  }
+
+  function getActiveFlamePreset() {
+    const preset = BALL_EFFECT_PRESETS[ballEffects.selectedPreset];
+    if (!preset || state !== "playing" || perfectChain < (preset.comboThreshold ?? 2)) return null;
+    return preset;
+  }
+
+  function getFlameStyle(preset) {
+    const key = ballEffects.selectedPreset + "|" + selectedThemeId + "|" + darkMode;
+    if (flameStyles.has(key)) return flameStyles.get(key);
+    const background = parseHexColor(getCanvasTheme().backgroundTop);
+    const darkBackground = background ? getLuminance(background) < 0.35 : darkMode;
+    let colors = preset.perfectFlameColors || preset.trailColors;
+    const middle = parseHexColor(colors[1]);
+    const darkPalette = middle ? getLuminance(middle) < 0.3 : false;
+    // Dark smoke disappears on a dark background, so invert it to pale smoke there.
+    if (darkPalette && darkBackground) colors = colors.map(invertHexColor);
+    colors = ensureFlameBands(colors);
+    const shape = preset.perfectFlameShape || "flame";
+    const style = {
+      colors,
+      // Additive glow only reads on a dark background; on light themes it clamps to white.
+      blend: darkBackground ? "lighter" : "source-over",
+      gravity: preset.gravityModifier !== undefined ? preset.gravityModifier * 0.5 : -70,
+      intensity: preset.perfectFlameIntensity || 1,
+      embers: shape === "frost" || shape === "energy" ? 26 : shape === "spirit" ? 6 : 16
+    };
+    flameStyles.set(key, style);
+    return style;
+  }
+
+  // Single-colour palettes would draw one flat shape; derive a light core and a deeper rim.
+  function ensureFlameBands(colors) {
+    const first = parseHexColor(colors[0]);
+    const lastColor = parseHexColor(colors[2]);
+    if (!first || !lastColor) return colors;
+    const spread = Math.max(Math.abs(first.r - lastColor.r), Math.abs(first.g - lastColor.g), Math.abs(first.b - lastColor.b));
+    if (spread >= 40) return colors;
+    return [mixHexColor(colors[1], "#ffffff", 0.6), colors[1], mixHexColor(colors[1], "#000000", 0.3)];
+  }
+
+  function mixHexColor(color, target, amount) {
+    const a = parseHexColor(color);
+    const b = parseHexColor(target);
+    if (!a || !b) return color;
+    return "#" + ["r", "g", "b"].map((key) => Math.round(a[key] + (b[key] - a[key]) * amount).toString(16).padStart(2, "0")).join("");
+  }
+
+  function getLuminance(rgb) {
+    return (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255;
+  }
+
+  function invertHexColor(color) {
+    const rgb = parseHexColor(color);
+    if (!rgb) return color;
+    return "#" + [255 - rgb.r, 255 - rgb.g, 255 - rgb.b].map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  function parseHexColor(color) {
+    const match = /^#([0-9a-f]{6})$/i.exec(color || "");
+    if (!match) return null;
+    const value = parseInt(match[1], 16);
+    return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+  }
+
+  // Soft radial glow per colour, rendered once and reused with drawImage.
+  function getGlowSprite(color) {
+    if (glowSprites.has(color)) return glowSprites.get(color);
+    let sprite = null;
+    const rgb = parseHexColor(color);
+    if (rgb && typeof document.createElement === "function") {
+      sprite = document.createElement("canvas");
+      sprite.width = 64;
+      sprite.height = 64;
+      const spriteCtx = sprite.getContext("2d");
+      const rgba = (alpha) => "rgba(" + rgb.r + ", " + rgb.g + ", " + rgb.b + ", " + alpha + ")";
+      const gradient = spriteCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gradient.addColorStop(0, rgba(1));
+      gradient.addColorStop(0.35, rgba(0.6));
+      gradient.addColorStop(1, rgba(0));
+      spriteCtx.fillStyle = gradient;
+      spriteCtx.fillRect(0, 0, 64, 64);
+    }
+    glowSprites.set(color, sprite);
+    return sprite;
+  }
+
+  function drawGlow(color, x, y, radius, alpha) {
+    if (alpha <= 0.01 || radius <= 0.2) return;
+    ctx.globalAlpha = alpha;
+    const sprite = getGlowSprite(color);
+    if (sprite) {
+      ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
+    } else {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function updateBallEffects(dt, airborne) {
+    flameClock += dt;
+    updateCelFlame(dt, airborne);
+  }
+
+  function isFlameParticle(p) {
+    return p.type === "lick" || p.type === "cinder";
+  }
+
+  function countFlameParticles() {
+    let count = 0;
+    for (const p of particles) if (isFlameParticle(p)) count += 1;
+    return count;
+  }
+
+  // Ribbon trail: recent drawn positions, newest first, expiring after FLAME_TRAIL_LIFE.
+  function updateCelFlame(dt, airborne) {
+    const preset = getActiveFlamePreset();
+    if (!preset) {
+      flameTrail.length = 0;
+      return;
+    }
+    const style = getFlameStyle(preset);
+    if (airborne) {
+      const origin = getBallRenderPosition();
+      const last = flameTrail[0];
+      const gap = last ? Math.hypot(origin.x - last.x, origin.y - last.y) : Infinity;
+      // A frame can move ~117 units at the 0.1 s clamp; anything larger is a teleport.
+      if (!last || gap > 160) {
+        flameTrail.length = 0;
+        flameTrail.unshift({ x: origin.x, y: origin.y, t: flameClock });
+      } else if (gap >= FLAME_TRAIL_SPACING) {
+        const steps = Math.min(3, Math.floor(gap / FLAME_TRAIL_SPACING));
+        for (let i = 1; i <= steps; i += 1) {
+          const t = i / steps;
+          flameTrail.unshift({ x: last.x + (origin.x - last.x) * t, y: last.y + (origin.y - last.y) * t, t: flameClock });
+        }
+      }
+      const budget = MAX_FLAME_PARTICLES - countFlameParticles();
+      flameLickTimer -= dt;
+      if (flameLickTimer <= 0 && budget > 0 && flameTrail.length > 3) {
+        flameLickTimer = 0.05 / style.intensity;
+        const source = flameTrail[Math.floor(random(0.4, 0.9) * (flameTrail.length - 1))];
+        emitFlameLick(style, source.x, source.y);
+      }
+      if (budget > 1 && Math.random() < dt * style.embers * style.intensity) emitFlameEmber(style, origin.x, origin.y);
+    }
+    while (flameTrail.length && flameClock - flameTrail[flameTrail.length - 1].t > FLAME_TRAIL_LIFE) flameTrail.pop();
+    if (flameTrail.length > 48) flameTrail.length = 48;
+  }
+
+  function emitFlameLick(style, x, y) {
+    const speed = Math.hypot(ball.vx, ball.vy) || 1;
+    const drift = random(30, 70);
+    const life = random(0.18, 0.28);
+    pushParticle({
+      type: "lick",
+      x: x + random(-3, 3),
+      y: y + random(-3, 3),
+      vx: (-ball.vx / speed) * drift + random(-15, 15),
+      vy: (-ball.vy / speed) * drift - random(50, 90),
+      gravity: style.gravity,
+      shrinkRate: 0,
+      life,
+      maxLife: life,
+      size: random(0.45, 0.65) * ball.r,
+      colors: style.colors
+    });
+  }
+
+  function emitFlameEmber(style, x, y) {
+    const angle = random(0, Math.PI * 2);
+    const speed = random(40, 120);
+    const life = random(0.3, 0.55);
+    pushParticle({
+      type: "cinder",
+      x: x + Math.cos(angle) * ball.r * 0.6,
+      y: y + Math.sin(angle) * ball.r * 0.6,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40,
+      gravity: style.gravity * 0.6,
+      shrinkRate: 0,
+      life,
+      maxLife: life,
+      size: random(2.2, 3.4),
+      colors: style.colors
+    });
+  }
+
+  function drawFlameAura(x, y) {
+    const preset = getActiveFlamePreset();
+    if (!preset) return;
+    const style = getFlameStyle(preset);
+    drawCelFlame(x, y, style);
+  }
+
+  // Spine runs from the ball back along the trail; old points rise like real flame.
+  function buildFlameSpine(x, y) {
+    const spine = [{ x, y }];
+    if (!ball.held) {
+      let length = 0;
+      let previous = spine[0];
+      for (const point of flameTrail) {
+        const age = flameClock - point.t;
+        const next = { x: point.x, y: point.y - age * 90 };
+        const segment = Math.hypot(next.x - previous.x, next.y - previous.y);
+        if (segment < 0.5) continue;
+        if (length + segment > FLAME_TRAIL_MAX_LENGTH) {
+          const t = (FLAME_TRAIL_MAX_LENGTH - length) / segment;
+          spine.push({ x: previous.x + (next.x - previous.x) * t, y: previous.y + (next.y - previous.y) * t });
+          break;
+        }
+        length += segment;
+        spine.push(next);
+        previous = next;
+      }
+    }
+    if (spine.length < 3) {
+      // Held or just launched: the ball burns upward in place.
+      spine.length = 1;
+      for (let i = 1; i <= 6; i += 1) {
+        spine.push({ x: x + Math.sin(flameClock * 7 + i * 0.9) * i * 0.9, y: y - i * ball.r * 0.42 });
+      }
+    }
+    return spine;
+  }
+
+  function drawCelFlame(x, y, style) {
+    const spine = buildFlameSpine(x, y);
+    const width = ball.r * 1.6 * Math.sqrt(style.intensity) * (1 + Math.min(perfectChain, 10) * 0.025);
+    ctx.save();
+    if (style.blend === "lighter") {
+      ctx.globalCompositeOperation = "lighter";
+      drawGlow(style.colors[1], x, y, ball.r * 2.6, 0.3);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.globalAlpha = 1;
+    drawFlameRibbon(spine, width, 1, 0.7, style.colors[2], 0);
+    drawFlameRibbon(spine, width, 0.74, 1, style.colors[1], 1.7);
+    drawFlameRibbon(spine, width, 0.46, 1.5, style.colors[0], 3.1);
+    ctx.restore();
+  }
+
+  // One filled ribbon: tapered body, flickering tongues toward the tail, round cap at the ball.
+  function drawFlameRibbon(spine, width, scale, taper, color, phase) {
+    const last = spine.length - 1;
+    const left = [];
+    const right = [];
+    let headAngle = 0;
+    let headWidth = 0;
+    for (let i = 0; i <= last; i += 1) {
+      const a = spine[Math.max(0, i - 1)];
+      const b = spine[Math.min(last, i + 1)];
+      const length = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const tx = (a.x - b.x) / length;
+      const ty = (a.y - b.y) / length;
+      const u = i / last;
+      const base = width * scale * Math.pow(1 - u, taper);
+      const tongue = (offset) => 1 + (0.15 + u) * 1.1 * Math.pow(0.5 + 0.5 * Math.sin(u * 8 - flameClock * 15 + phase + offset), 3);
+      const leftWidth = base * tongue(0);
+      const rightWidth = base * tongue(2.1);
+      left.push(spine[i].x - ty * leftWidth, spine[i].y + tx * leftWidth);
+      right.push(spine[i].x + ty * rightWidth, spine[i].y - tx * rightWidth);
+      if (i === 0) {
+        headAngle = Math.atan2(ty, tx);
+        headWidth = base;
+      }
+    }
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(left[0], left[1]);
+    traceSmooth(left);
+    ctx.lineTo(spine[last].x, spine[last].y);
+    const reversed = [];
+    for (let i = right.length - 2; i >= 0; i -= 2) reversed.push(right[i], right[i + 1]);
+    ctx.lineTo(reversed[0], reversed[1]);
+    traceSmooth(reversed);
+    ctx.arc(spine[0].x, spine[0].y, headWidth, headAngle - Math.PI * 0.5, headAngle + Math.PI * 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function traceSmooth(points) {
+    for (let i = 2; i < points.length - 2; i += 2) {
+      ctx.quadraticCurveTo(points[i], points[i + 1], (points[i] + points[i + 2]) * 0.5, (points[i + 1] + points[i + 3]) * 0.5);
+    }
+    ctx.lineTo(points[points.length - 2], points[points.length - 1]);
+  }
+
   function registerWallTouch(countBounce) {
-    if (!ball.touchedWall) playGameSound("wall");
     if (countBounce) ball.wallBounceCount = addSafeStat(ball.wallBounceCount, 1);
     ball.touchedWall = true;
   }
@@ -2978,12 +3381,15 @@
       writeBestScore(best);
     }
     updateScore();
-    shake = 5;
+    bumpScoreHud(wasPerfect);
+    const resultShake = wasPerfect
+      ? SCORE_SHAKE.perfect + Math.min(swishStreak, 6) * SCORE_SHAKE.perStreak
+      : SCORE_SHAKE.basket;
+    shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
     comboText = usedWall || wasPerfect ? 1.5 : 1.0;
     scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain);
-    playGameSound(wasPerfect ? "swish" : "basket");
-    if (usedWall) playGameSound("wallBonus");
-    if (wasPerfect && swishStreak > 1) playGameSound("combo", { streak: swishStreak });
+    playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak });
+    triggerHaptic(!wasPerfect ? 16 : swishStreak >= 3 ? [12, 30, 12, 30, 24] : [12, 40, 18], true);
     burst(hoop.x, hoop.y);
     triggerHoopScoreEffect(hoop, { swish: wasPerfect, wall: usedWall });
     hoop.moving = false;
@@ -3782,9 +4188,11 @@
     const skin = getSelectedBallSkin();
     const colors = skin.colors;
     const skinImage = getBallSkinImage(skin);
-    ctx.save();
     const renderPosition = getBallRenderPosition();
+    drawFlameAura(renderPosition.x, renderPosition.y);
+    ctx.save();
     ctx.translate(renderPosition.x, renderPosition.y);
+    applyBallSquash();
     ctx.rotate(previousBallRender.rotation + (currentBallRender.rotation - previousBallRender.rotation) * renderAlpha);
 
     if (skinImage && skinImage.complete && skinImage.naturalWidth > 0) {
@@ -3994,28 +4402,22 @@
         ctx.beginPath();
         ctx.ellipse(p.x, p.y, Math.max(1, p.size * 1.2), Math.max(1, p.size * 0.72), Math.atan2(p.vy, p.vx), 0, Math.PI * 2);
         ctx.fill();
-      } else if (p.type === "flame") {
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.angle || Math.atan2(p.vy, p.vx));
+      } else if (isFlameParticle(p)) {
+        continue;
+      } else if (p.type === "spark") {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = p.size;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025);
+        ctx.stroke();
+      } else if (p.type === "dust") {
+        ctx.globalAlpha = clamp(p.life / (p.maxLife || 0.45), 0, 1) * 0.55;
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        const length = Math.max(3, p.size * (1.65 - progress * 0.45));
-        const width = Math.max(2, p.size * (0.78 - progress * 0.18));
-        if (p.shape === "splash") {
-          ctx.ellipse(0, 0, length * 0.82, width * 0.72, 0, 0, Math.PI * 2);
-        } else {
-          ctx.moveTo(length * 0.72, 0);
-          ctx.bezierCurveTo(length * 0.25, -width, -length * 0.45, -width * 0.72, -length * 0.8, 0);
-          ctx.bezierCurveTo(-length * 0.3, width * 0.78, length * 0.22, width * 0.72, length * 0.72, 0);
-        }
+        ctx.arc(p.x, p.y, p.size * (1 + progress * 0.8), 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalAlpha *= 0.55;
-        ctx.fillStyle = "rgba(255, 255, 255, 0.62)";
-        ctx.beginPath();
-        ctx.ellipse(length * 0.12, 0, Math.max(1, width * 0.28), Math.max(1, width * 0.18), 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
       } else {
         ctx.fillStyle = p.color;
         ctx.beginPath();
@@ -4023,7 +4425,51 @@
         ctx.fill();
       }
     }
+    drawFlameParticles();
     ctx.restore();
+  }
+
+  // Detached flame tongue: teardrop pointing along its drift, outer and inner colour.
+  function drawFlameLick(p, progress) {
+    const size = p.size * (1 - progress * 0.7);
+    if (size <= 0.5) return;
+    ctx.save();
+    ctx.globalAlpha = 1 - progress * 0.6;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(Math.atan2(p.vy, p.vx));
+    for (const [color, scale] of [[p.colors[1], 1], [p.colors[0], 0.5]]) {
+      const length = size * 1.9 * scale;
+      const half = size * 0.62 * scale;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(length, 0);
+      ctx.bezierCurveTo(length * 0.3, -half, -half, -half, -half, 0);
+      ctx.bezierCurveTo(-half, half, length * 0.3, half, length, 0);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Detached licks and diamond cinders, drawn after the regular particles.
+  function drawFlameParticles() {
+    for (const p of particles) {
+      if (!isFlameParticle(p)) continue;
+      const progress = 1 - clamp(p.life / (p.maxLife || 0.4), 0, 1);
+      if (p.type === "lick") {
+        drawFlameLick(p, progress);
+        continue;
+      }
+      const size = p.size * (1 - progress * 0.6);
+      ctx.globalAlpha = 1 - progress;
+      ctx.fillStyle = p.colors[0];
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - size);
+      ctx.lineTo(p.x + size * 0.6, p.y);
+      ctx.lineTo(p.x, p.y + size);
+      ctx.lineTo(p.x - size * 0.6, p.y);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   function drawParticleStar(x, y, radius, rotation) {
@@ -4151,39 +4597,71 @@
   function playGameSound(name, context) {
     if (muted || userPaused) return;
     const detail = context || {};
+    // UI sounds share the wall thump's character: a soft triangle body plus a filtered noise tap.
     if (name === "button") {
-      playTone(360, 0.045, "sine", 0.018, 0, 460);
+      playTone(300, 0.07, "triangle", 0.024, 0, 210);
+      playNoise(0.035, 0.018, "lowpass", 1600, 600, 0.7);
     } else if (name === "start") {
-      playTone(260, 0.09, "triangle", 0.03, 0, 420);
-      playTone(520, 0.12, "sine", 0.026, 0.07, 720);
+      playTone(180, 0.1, "triangle", 0.032, 0, 110);
+      playNoise(0.06, 0.03, "lowpass", 1000, 300, 0.7);
+      playTone(523, 0.12, "sine", 0.018, 0.09, 528);
+      playTone(784, 0.18, "sine", 0.017, 0.15, 790);
     } else if (name === "shot") {
-      playTone(520, 0.07, "triangle", 0.025, 0, 290);
+      // Slingshot "thwop": a rising rubbery tone and a muffled body, no hiss.
+      const power = clamp(Number(detail.power) || 0, 0, 1);
+      playTone(170, 0.1, "triangle", 0.03 + power * 0.016, 0, 300 + power * 180);
+      playNoise(0.05, 0.02 + power * 0.02, "lowpass", 500, 200, 0.7);
+      playTone(660, 0.05, "sine", 0.01, 0.015, 440);
     } else if (name === "rim") {
-      playTone(230, 0.045, "triangle", 0.015, 0, 170);
-    } else if (name === "wall") {
-      playTone(170, 0.055, "square", 0.012, 0, 120);
-    } else if (name === "basket") {
-      playTone(480, 0.09, "sine", 0.03, 0, 560);
-      playTone(720, 0.12, "sine", 0.022, 0.055, 820);
-    } else if (name === "swish") {
-      playTone(620, 0.1, "sine", 0.032, 0, 760);
-      playTone(930, 0.14, "sine", 0.024, 0.045, 1120);
-    } else if (name === "wallBonus") {
-      playTone(340, 0.08, "triangle", 0.022, 0, 510);
-      playTone(680, 0.12, "sine", 0.02, 0.065, 880);
-    } else if (name === "combo") {
-      const comboPitch = 720 + Math.min(detail.streak || 1, 10) * 28;
-      playTone(comboPitch, 0.1, "sine", 0.018, 0.1, comboPitch + 110);
+      // Short, dull metal "tonk" in the wall thump's family; no long ring.
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      const base = 400 + Math.random() * 40;
+      const level = 0.014 + strength * 0.034;
+      playTone(base, 0.13, "triangle", level, 0, base * 0.96);
+      playTone(base * 2.7, 0.06, "sine", level * 0.28, 0, 0);
+      playNoise(0.02, level * 0.6, "lowpass", 2200, 700, 0.7);
+    } else if (name === "net") {
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      playNoise(0.08, 0.012 + strength * 0.025, "lowpass", 700, 300, 0.6);
+      playTone(260, 0.05, "triangle", 0.008 + strength * 0.012, 0, 200);
+    } else if (name === "board" || name === "wall") {
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      const pitch = name === "board" ? 150 : 120;
+      playTone(pitch, 0.09, "triangle", 0.018 + strength * 0.035, 0, pitch * 0.55);
+      playNoise(0.06, 0.02 + strength * 0.04, "lowpass", 900, 300, 0.7);
+    } else if (name === "score") {
+      // One scoring cue: soft drop into the net, then rising marimba notes.
+      // Normal: two notes. Perfect: three-note arpeggio, a semitone higher per streak step,
+      // with a bright top note once the ball is on fire. Bank shots open with a wood knock.
+      const streak = Math.min(Number(detail.streak) || 0, 8);
+      const root = 523.25 * Math.pow(2, (detail.perfect ? streak : 0) / 12);
+      let start = 0;
+      playTone(140, 0.08, "triangle", 0.03, 0, 90);
+      playNoise(0.05, 0.022, "lowpass", 600, 200, 0.7);
+      if (detail.wall) {
+        playTone(196, 0.07, "triangle", 0.026, 0.02, 150);
+        playNoise(0.03, 0.02, "lowpass", 1200, 400, 0.7, 0.02);
+        start = 0.05;
+      }
+      const notes = detail.perfect ? [1, 1.26, 1.5] : [0.75, 1];
+      if (detail.perfect && streak >= 3) notes.push(2);
+      notes.forEach((ratio, i) => playMallet(root * ratio, start + 0.02 + i * 0.07, i === notes.length - 1 ? 0.034 : 0.026));
     } else if (name === "countdownTick") {
       const remainingSeconds = clamp(Math.floor(Number(detail.seconds) || 1), 1, 5);
       const tickPitch = 520 + (5 - remainingSeconds) * 55;
-      playTone(tickPitch, 0.045, "triangle", 0.018, 0, tickPitch + 70);
+      playTone(tickPitch, 0.05, "triangle", 0.02, 0, tickPitch * 0.8);
+      playNoise(0.025, 0.014, "bandpass", tickPitch * 3, 0, 2);
     } else if (name === "retry") {
-      playTone(280, 0.08, "triangle", 0.022, 0, 390);
-      playTone(440, 0.09, "sine", 0.018, 0.06, 520);
+      playTone(220, 0.08, "triangle", 0.026, 0, 150);
+      playNoise(0.05, 0.024, "lowpass", 900, 300, 0.7);
+      playTone(523, 0.1, "sine", 0.016, 0.06, 528);
+      playTone(659, 0.13, "sine", 0.015, 0.11, 664);
     } else if (name === "gameover") {
-      playTone(220, 0.18, "sawtooth", 0.026, 0, 105);
-      playTone(150, 0.22, "triangle", 0.018, 0.11, 80);
+      playTone(165, 0.24, "triangle", 0.036, 0, 82);
+      playNoise(0.16, 0.05, "lowpass", 700, 150, 0.7);
+      playTone(392, 0.16, "sine", 0.017, 0.06, 388);
+      playTone(311, 0.2, "sine", 0.016, 0.18, 306);
+      playTone(262, 0.32, "sine", 0.016, 0.32, 252);
     }
   }
 
@@ -5197,12 +5675,24 @@
     }
   }
 
+  function toggleHaptics() {
+    if (!gameBooted) return;
+    hapticsEnabled = !hapticsEnabled;
+    writeBooleanPreference(HAPTICS_KEY, hapticsEnabled);
+    syncControlLabels();
+    triggerHaptic(20);
+    playGameSound("button");
+  }
+
   function syncControlLabels() {
     const soundEnabled = !muted;
     const enabledLabel = darkMode ? t("on") : t("off");
     const darkLabel = t("darkMode") + ": " + enabledLabel;
     settingsSoundButton.setAttribute("aria-pressed", String(soundEnabled));
     settingsSoundButton.textContent = t("sound") + ": " + (soundEnabled ? t("on") : t("off"));
+    settingsHapticsButton.hidden = !canVibrate;
+    settingsHapticsButton.setAttribute("aria-pressed", String(hapticsEnabled));
+    settingsHapticsButton.textContent = t("haptics") + ": " + (hapticsEnabled ? t("on") : t("off"));
     settingsDarkModeButton.setAttribute("aria-pressed", String(darkMode));
     settingsDarkModeButton.textContent = darkLabel;
     languageButton.textContent = t("language") + ": " + (language === "tr" ? t("turkish") : t("english"));
@@ -5388,9 +5878,58 @@
     amp.gain.linearRampToValueAtTime(gain, now + 0.01);
     amp.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.connect(amp);
-    amp.connect(audioContext.destination);
+    amp.connect(getAudioOutput());
     osc.start(now);
     osc.stop(now + duration + 0.02);
+  }
+
+  // Marimba-like mallet: sine body, short 4th partial and a tiny attack click.
+  function playMallet(freq, delay, gain) {
+    playTone(freq, 0.32, "sine", gain, delay, 0);
+    playTone(freq * 4, 0.06, "sine", gain * 0.3, delay, 0);
+    playNoise(0.015, gain * 0.5, "lowpass", 2500, 0, 0.7, delay);
+  }
+
+  function playNoise(duration, gain, filterType, freq, endFreq, q, delay) {
+    if (muted || userPaused || !audioContext) return;
+    if (!noiseBuffer) {
+      noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+      const samples = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i += 1) samples[i] = Math.random() * 2 - 1;
+    }
+    const now = audioContext.currentTime + (delay || 0);
+    const source = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const amp = audioContext.createGain();
+    source.buffer = noiseBuffer;
+    filter.type = filterType;
+    filter.Q.value = q;
+    filter.frequency.setValueAtTime(freq, now);
+    if (endFreq) filter.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+    amp.gain.setValueAtTime(0, now);
+    amp.gain.linearRampToValueAtTime(gain, now + 0.006);
+    amp.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    source.connect(filter);
+    filter.connect(amp);
+    amp.connect(getAudioOutput());
+    source.start(now, Math.random() * 0.6);
+    source.stop(now + duration + 0.02);
+  }
+
+  // Shared output with a gentle compressor so stacked impact sounds don't clip.
+  function getAudioOutput() {
+    if (!audioOutput) {
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.value = -18;
+      compressor.knee.value = 12;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.12;
+      compressor.connect(audioContext.destination);
+      audioOutput = audioContext.createGain();
+      audioOutput.connect(compressor);
+    }
+    return audioOutput;
   }
 
   function loop(now, generation, firstPhysicsFrame) {
@@ -5491,6 +6030,7 @@
   if (customizeThemeButton) customizeThemeButton.addEventListener("click", () => openMenuPanel("theme"));
   settingsButton.addEventListener("click", () => openMenuPanel("settings"));
   settingsSoundButton.addEventListener("click", toggleSound);
+  settingsHapticsButton.addEventListener("click", toggleHaptics);
   settingsDarkModeButton.addEventListener("click", toggleDarkMode);
   languageButton.addEventListener("click", toggleLanguage);
   settingsBackButton.addEventListener("click", closeSettings);
