@@ -146,6 +146,7 @@
   const FLAME_TRAIL_MAX_LENGTH = 120;
   const SCORE_SHAKE = Object.freeze({ basket: 2.5, perfect: 3.5, perStreak: 0.5, wall: 1, max: 6 });
   const Physics = globalThis.HoopFlickPhysics;
+  const BallArt = globalThis.HoopFlickBallArt;
   const FLIGHT_PARAMS = Object.freeze({
     gravity: GRAVITY,
     airDrag: AIR_DRAG,
@@ -467,6 +468,10 @@
       descriptionKey: "selectedSkin",
       effectPreset: "classic",
       assetPath: "",
+      art: {
+        id: "classic", body: "#f4892a", shadow: "#c4560f", rim: "#ffd29a",
+        outline: "#3b2416", seams: "#3b2416"
+      },
       colors: {
         light: "#ffb24a",
         mid: "#f28a27",
@@ -481,6 +486,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "inverted",
       assetPath: "",
+      art: {
+        id: "inverted", body: "#2b2c35", shadow: "#0c0c12", rim: "#9aa6c4",
+        rimAlpha: 0.45, outline: "#07070a", seams: "#f3f3f6", darkBody: true
+      },
       colors: {
         light: "#5c5c5c",
         mid: "#2b2b2b",
@@ -496,6 +505,11 @@
       effectPreset: "neon",
       assetPath: "",
       noSeams: true,
+      art: {
+        id: "neon", body: "#0b1531", shadow: "#040915", rim: "#38f2ff",
+        rimAlpha: 0.35, outline: "#38f2ff", outlineWidth: 0.09, darkBody: true,
+        highlightAlpha: 0.55, tubeHalo: "#00bfff", tube: "#38f2ff", tubeCore: "#eaffff"
+      },
       colors: {
         light: "#38f2ff",
         mid: "#00bfff",
@@ -510,6 +524,11 @@
       descriptionKey: "selectSkin",
       effectPreset: "magma",
       assetPath: "",
+      art: {
+        id: "magma", body: "#2c1712", shadow: "#0f0605", rim: "#ff7a3d",
+        outline: "#140805", darkBody: true, plate: "#3d2119", highlightAlpha: 0.45,
+        crackOuter: "#ff5a1f", crackInner: "#ffd84a"
+      },
       colors: {
         light: "#fffa65",
         mid: "#ff6c00",
@@ -524,6 +543,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "watermelon",
       assetPath: "",
+      art: {
+        id: "watermelon", body: "#ff4f5f", shadow: "#b8132c", rim: "#ffb3ba",
+        outline: "#1f8a3a", outlineWidth: 0.2, innerRind: "#d8f5a8", seed: "#1c1010"
+      },
       colors: {
         light: "#ff4d4d",
         mid: "#e60000",
@@ -539,6 +562,10 @@
       effectPreset: "gold",
       assetPath: "",
       noSeams: true,
+      art: {
+        id: "gold", body: "#ffc928", shadow: "#a86d00", rim: "#fff2a8",
+        outline: "#5a3800", engraving: "#c98a00", metalBand: "#fff4b8", sparkle: "#ffffff"
+      },
       colors: {
         light: "#ffef96",
         mid: "#ffcc00",
@@ -554,6 +581,11 @@
       effectPreset: "ghost",
       assetPath: "",
       noSeams: true,
+      art: {
+        id: "ghost", body: "#f3f6ff", shadow: "#b6c1e6", rim: "#ffffff",
+        outline: "#7f8cbc", outlineWidth: 0.1, alpha: 0.9,
+        face: "#262b46", cheek: "#ffb3c7"
+      },
       colors: {
         light: "#ffffff",
         mid: "#f2f2f2",
@@ -568,6 +600,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "toxic",
       assetPath: "",
+      art: {
+        id: "toxic", body: "#57e82e", shadow: "#1d7a12", rim: "#d6ff9e",
+        outline: "#0d2a08", symbol: "#123a0c", bubble: "#e8ff9c"
+      },
       colors: {
         light: "#b3ff66",
         mid: "#39ff14",
@@ -583,6 +619,11 @@
       effectPreset: "toxic",
       assetPath: "",
       noSeams: true,
+      art: {
+        id: "matrix", body: "#03170a", shadow: "#000000", rim: "#00ff66",
+        rimAlpha: 0.4, outline: "#00ff66", outlineWidth: 0.08, darkBody: true,
+        highlightAlpha: 0.25, rain: "#00ff66", rainHead: "#ccffd9"
+      },
       colors: {
         light: "#00ff00",
         mid: "#009900",
@@ -597,6 +638,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "earth",
       assetPath: "",
+      art: {
+        id: "earth", body: "#2f8fe0", shadow: "#143f80", rim: "#9fe6ff",
+        rimAlpha: 0.85, outline: "#0b2547", land: "#4cc34a", coast: "#2e8f33", cloud: "#ffffff"
+      },
       colors: {
         light: "#66ccff",
         mid: "#0073e6",
@@ -611,6 +656,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "plasma",
       assetPath: "",
+      art: {
+        id: "cyberpunk", body: "#ff2fa8", shadow: "#6e0f6a", rim: "#ffd1f0",
+        outline: "#1a0630", band: "#ffe600", circuit: "#34f5ff"
+      },
       colors: {
         light: "#ffff00",
         mid: "#ff00ff",
@@ -625,6 +674,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "bloodMoon",
       assetPath: "",
+      art: {
+        id: "bloodMoon", body: "#b8222c", shadow: "#4a0610", rim: "#ff8a8a",
+        outline: "#24040a", crater: "#7c0f19", craterLip: "#e04f4f"
+      },
       colors: {
         light: "#ff3333",
         mid: "#990000",
@@ -639,6 +692,10 @@
       descriptionKey: "selectSkin",
       effectPreset: "zebra",
       assetPath: "",
+      art: {
+        id: "zebra", body: "#f7f6f0", shadow: "#aeb0bf", rim: "#ffffff",
+        outline: "#111111", stripe: "#141414"
+      },
       colors: {
         light: "#ffffff",
         mid: "#e6e6e6",
@@ -654,6 +711,11 @@
       effectPreset: "gold",
       assetPath: "",
       noSeams: true,
+      art: {
+        id: "sun", body: "#ffd21f", shadow: "#ff9a1f", rim: "#fff3a6",
+        outline: "#e0560f", emissive: true, highlightAlpha: 0.5,
+        corona: "#ffb020", coronaEdge: "#ff8a1f", core: "#fff3a6", flare: "#ff9a1f"
+      },
       colors: {
         light: "#ffffff",
         mid: "#ffff00",
@@ -1488,8 +1550,15 @@
   const flameTrail = [];
   let flameClock = 0;
   let flameLickTimer = 0;
+  let ballArtClock = 0;
+  let ballHeat = 0;
+  let ballIgnitionFlash = 0;
+  let ballFlameWasActive = false;
+  let lastBallHeatColors = BALL_EFFECT_PRESETS.classic.perfectFlameColors;
+  const ballPreviewAnimation = { frameId: null, startedAt: 0 };
   const glowSprites = new Map();
   const flameStyles = new Map();
+  const flameStyleKeys = new WeakMap();
   const debugShots = new URLSearchParams(window.location.search).get("debugShots") === "1"
     ? { preview: null, actual: [], steps: 0, recording: false, ratio: 0 }
     : null;
@@ -1568,6 +1637,7 @@
       return false;
     }
     const activeTimeChanged = state === "playing" ? stopActivePlayClock() : false;
+    if (state === "customize" && nextState !== "customize") stopBallPreviewAnimation();
     state = nextState;
     resetPhysicsClock();
     startActivePlayClock();
@@ -1600,6 +1670,9 @@
     shake = 0;
     ballSquash.value = 0;
     ballSquash.velocity = 0;
+    ballHeat = 0;
+    ballIgnitionFlash = 0;
+    ballFlameWasActive = false;
     for (const kind of Object.keys(lastImpactFeedbackAt)) lastImpactFeedbackAt[kind] = -Infinity;
     comboText = 0;
     perfectChain = 0;
@@ -1780,6 +1853,9 @@
     }
     swishStreak = 0;
     perfectChain = 0;
+    ballHeat = 0;
+    ballIgnitionFlash = 0;
+    ballFlameWasActive = false;
     comboText = 0;
     shake = 0;
     particles = [];
@@ -2593,6 +2669,7 @@
   }
 
   function updatePresentation(dt) {
+    ballArtClock += dt;
     for (const hoop of hoops) {
       hoop.entranceTimer = Math.min(1, (hoop.entranceTimer ?? hoop.spawnProgress ?? 1) + dt / HOOP_SPAWN_DURATION);
       hoop.spawnProgress = hoop.entranceTimer;
@@ -2601,6 +2678,7 @@
     }
 
     updateBallSquash(dt);
+    updateBallIgnition(dt);
     if (state === "playing") {
       const cameraTarget = previousTargetCameraY + (targetCameraY - previousTargetCameraY) * renderAlpha;
       cameraY += (cameraTarget - cameraY) * (1 - Math.pow(1 - 4.2 / 60, dt * 60));
@@ -2632,6 +2710,38 @@
       coinFeedback.life -= dt;
       if (coinFeedback.life <= 0) coinFeedback = null;
     }
+  }
+
+  function updateBallIgnition(dt) {
+    const preset = getActiveFlamePreset();
+    const active = Boolean(preset);
+    if (preset) lastBallHeatColors = getFlameStyle(preset).colors;
+    if (active && !ballFlameWasActive) {
+      const position = getBallRenderPosition();
+      const style = getFlameStyle(preset);
+      const colors = style.colors;
+      ballIgnitionFlash = 1;
+      // Ignition must read even when the ball sits behind the net: a thick mid-colour ring, a deeper
+      // ring that follows (the pale core colour vanishes on light themes), and a burst of flame tongues.
+      pushShotRing({
+        x: position.x, y: position.y, vx: 0, vy: 0, delay: 0,
+        life: 0.42, maxLife: 0.42, startRadius: ball.r * 0.9,
+        growth: ball.r * 3.4, color: colors[1], width: 6
+      });
+      pushShotRing({
+        x: position.x, y: position.y, vx: 0, vy: 0, delay: 0.07,
+        life: 0.36, maxLife: 0.36, startRadius: ball.r * 0.8,
+        growth: ball.r * 2.6, color: colors[2], width: 4
+      });
+      emitIgnitionBurst(style, position.x, position.y);
+      kickBallSquash(-Math.PI * 0.5, 0.2);
+    }
+    ballFlameWasActive = active;
+    const target = active ? 1 : 0;
+    const response = target > ballHeat ? 0.12 : 0.35;
+    ballHeat += (target - ballHeat) * (1 - Math.exp(-dt / response));
+    if (Math.abs(target - ballHeat) < 0.001) ballHeat = target;
+    ballIgnitionFlash = Math.max(0, ballIgnitionFlash - dt / 0.18);
   }
 
   function updateAirborneBall(dt) {
@@ -2786,6 +2896,9 @@
     }
     swishStreak = 0;
     perfectChain = 0;
+    ballHeat = 0;
+    ballIgnitionFlash = 0;
+    ballFlameWasActive = false;
     placeBallInHoop(currentHoop);
     setGameState("playing");
     retryOverlay.classList.remove("active");
@@ -3020,11 +3133,21 @@
     return preset;
   }
 
-  function getFlameStyle(preset) {
-    const key = ballEffects.selectedPreset + "|" + selectedThemeId + "|" + darkMode;
-    if (flameStyles.has(key)) return flameStyles.get(key);
+  function isCanvasDarkBackground() {
     const background = parseHexColor(getCanvasTheme().backgroundTop);
-    const darkBackground = background ? getLuminance(background) < 0.35 : darkMode;
+    return background ? getLuminance(background) < 0.35 : darkMode;
+  }
+
+  function getFlameStyle(preset, darkBackgroundOverride) {
+    const darkBackground = typeof darkBackgroundOverride === "boolean" ? darkBackgroundOverride : isCanvasDarkBackground();
+    let presetKey = flameStyleKeys.get(preset);
+    if (!presetKey) {
+      presetKey = (preset.perfectFlameColors || preset.trailColors || []).join(",") + "|" + (preset.perfectFlameShape || "flame") + "|"
+        + (preset.gravityModifier ?? "default") + "|" + (preset.perfectFlameIntensity || 1);
+      flameStyleKeys.set(preset, presetKey);
+    }
+    const key = presetKey + "|" + darkBackground;
+    if (flameStyles.has(key)) return flameStyles.get(key);
     let colors = preset.perfectFlameColors || preset.trailColors;
     const middle = parseHexColor(colors[1]);
     const darkPalette = middle ? getLuminance(middle) < 0.3 : false;
@@ -3100,17 +3223,17 @@
     return sprite;
   }
 
-  function drawGlow(color, x, y, radius, alpha) {
+  function drawGlow(targetCtx, color, x, y, radius, alpha) {
     if (alpha <= 0.01 || radius <= 0.2) return;
-    ctx.globalAlpha = alpha;
+    targetCtx.globalAlpha = alpha;
     const sprite = getGlowSprite(color);
     if (sprite) {
-      ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
+      targetCtx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
     } else {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
-      ctx.fill();
+      targetCtx.fillStyle = color;
+      targetCtx.beginPath();
+      targetCtx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
+      targetCtx.fill();
     }
   }
 
@@ -3184,6 +3307,27 @@
     });
   }
 
+  function emitIgnitionBurst(style, x, y) {
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (i / 8) * Math.PI * 2 + random(-0.2, 0.2);
+      const speed = random(150, 220);
+      const life = random(0.28, 0.38);
+      pushParticle({
+        type: "lick",
+        x: x + Math.cos(angle) * ball.r,
+        y: y + Math.sin(angle) * ball.r,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 40,
+        gravity: style.gravity,
+        shrinkRate: 0,
+        life,
+        maxLife: life,
+        size: random(0.55, 0.75) * ball.r,
+        colors: style.colors
+      });
+    }
+  }
+
   function emitFlameEmber(style, x, y) {
     const angle = random(0, Math.PI * 2);
     const speed = random(40, 120);
@@ -3207,17 +3351,22 @@
     const preset = getActiveFlamePreset();
     if (!preset) return;
     const style = getFlameStyle(preset);
-    drawCelFlame(x, y, style);
+    drawCelFlame({ ctx, radius: ball.r, clock: flameClock, chain: perfectChain, held: ball.held }, x, y, style);
   }
 
   // Spine runs from the ball back along the trail; old points rise like real flame.
-  function buildFlameSpine(x, y) {
+  function buildFlameSpine(target, x, y) {
+    if (typeof target === "number") {
+      y = x;
+      x = target;
+      target = { ctx, radius: ball.r, clock: flameClock, chain: perfectChain, held: ball.held };
+    }
     const spine = [{ x, y }];
-    if (!ball.held) {
+    if (!target.held) {
       let length = 0;
       let previous = spine[0];
       for (const point of flameTrail) {
-        const age = flameClock - point.t;
+        const age = target.clock - point.t;
         const next = { x: point.x, y: point.y - age * 90 };
         const segment = Math.hypot(next.x - previous.x, next.y - previous.y);
         if (segment < 0.5) continue;
@@ -3235,30 +3384,32 @@
       // Held or just launched: the ball burns upward in place.
       spine.length = 1;
       for (let i = 1; i <= 6; i += 1) {
-        spine.push({ x: x + Math.sin(flameClock * 7 + i * 0.9) * i * 0.9, y: y - i * ball.r * 0.42 });
+        spine.push({ x: x + Math.sin(target.clock * 7 + i * 0.9) * i * 0.9, y: y - i * target.radius * 0.42 });
       }
     }
     return spine;
   }
 
-  function drawCelFlame(x, y, style) {
-    const spine = buildFlameSpine(x, y);
-    const width = ball.r * 1.6 * Math.sqrt(style.intensity) * (1 + Math.min(perfectChain, 10) * 0.025);
-    ctx.save();
+  function drawCelFlame(target, x, y, style) {
+    const targetCtx = target.ctx;
+    const spine = buildFlameSpine(target, x, y);
+    const width = target.radius * 1.6 * Math.sqrt(style.intensity) * (1 + Math.min(target.chain, 10) * 0.025);
+    targetCtx.save();
     if (style.blend === "lighter") {
-      ctx.globalCompositeOperation = "lighter";
-      drawGlow(style.colors[1], x, y, ball.r * 2.6, 0.3);
-      ctx.globalCompositeOperation = "source-over";
+      targetCtx.globalCompositeOperation = "lighter";
+      drawGlow(targetCtx, style.colors[1], x, y, target.radius * 2.6, 0.3 * (target.alpha ?? 1));
+      targetCtx.globalCompositeOperation = "source-over";
     }
-    ctx.globalAlpha = 1;
-    drawFlameRibbon(spine, width, 1, 0.7, style.colors[2], 0);
-    drawFlameRibbon(spine, width, 0.74, 1, style.colors[1], 1.7);
-    drawFlameRibbon(spine, width, 0.46, 1.5, style.colors[0], 3.1);
-    ctx.restore();
+    targetCtx.globalAlpha = target.alpha ?? 1;
+    drawFlameRibbon(target, spine, width, 1, 0.7, style.colors[2], 0);
+    drawFlameRibbon(target, spine, width, 0.74, 1, style.colors[1], 1.7);
+    drawFlameRibbon(target, spine, width, 0.46, 1.5, style.colors[0], 3.1);
+    targetCtx.restore();
   }
 
   // One filled ribbon: tapered body, flickering tongues toward the tail, round cap at the ball.
-  function drawFlameRibbon(spine, width, scale, taper, color, phase) {
+  function drawFlameRibbon(target, spine, width, scale, taper, color, phase) {
+    const targetCtx = target.ctx;
     const last = spine.length - 1;
     const left = [];
     const right = [];
@@ -3272,7 +3423,7 @@
       const ty = (a.y - b.y) / length;
       const u = i / last;
       const base = width * scale * Math.pow(1 - u, taper);
-      const tongue = (offset) => 1 + (0.15 + u) * 1.1 * Math.pow(0.5 + 0.5 * Math.sin(u * 8 - flameClock * 15 + phase + offset), 3);
+      const tongue = (offset) => 1 + (0.15 + u) * 1.1 * Math.pow(0.5 + 0.5 * Math.sin(u * 8 - target.clock * 15 + phase + offset), 3);
       const leftWidth = base * tongue(0);
       const rightWidth = base * tongue(2.1);
       left.push(spine[i].x - ty * leftWidth, spine[i].y + tx * leftWidth);
@@ -3282,25 +3433,25 @@
         headWidth = base;
       }
     }
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(left[0], left[1]);
-    traceSmooth(left);
-    ctx.lineTo(spine[last].x, spine[last].y);
+    targetCtx.fillStyle = color;
+    targetCtx.beginPath();
+    targetCtx.moveTo(left[0], left[1]);
+    traceSmooth(targetCtx, left);
+    targetCtx.lineTo(spine[last].x, spine[last].y);
     const reversed = [];
     for (let i = right.length - 2; i >= 0; i -= 2) reversed.push(right[i], right[i + 1]);
-    ctx.lineTo(reversed[0], reversed[1]);
-    traceSmooth(reversed);
-    ctx.arc(spine[0].x, spine[0].y, headWidth, headAngle - Math.PI * 0.5, headAngle + Math.PI * 0.5);
-    ctx.closePath();
-    ctx.fill();
+    targetCtx.lineTo(reversed[0], reversed[1]);
+    traceSmooth(targetCtx, reversed);
+    targetCtx.arc(spine[0].x, spine[0].y, headWidth, headAngle - Math.PI * 0.5, headAngle + Math.PI * 0.5);
+    targetCtx.closePath();
+    targetCtx.fill();
   }
 
-  function traceSmooth(points) {
+  function traceSmooth(targetCtx, points) {
     for (let i = 2; i < points.length - 2; i += 2) {
-      ctx.quadraticCurveTo(points[i], points[i + 1], (points[i] + points[i + 2]) * 0.5, (points[i + 1] + points[i + 3]) * 0.5);
+      targetCtx.quadraticCurveTo(points[i], points[i + 1], (points[i] + points[i + 2]) * 0.5, (points[i + 1] + points[i + 3]) * 0.5);
     }
-    ctx.lineTo(points[points.length - 2], points[points.length - 1]);
+    targetCtx.lineTo(points[points.length - 2], points[points.length - 1]);
   }
 
   function registerWallTouch(countBounce) {
@@ -3326,6 +3477,7 @@
       }
       swishStreak = 0;
       perfectChain = 0;
+      ballFlameWasActive = false;
       placeBallInHoop(currentHoop);
     }
   }
@@ -3899,12 +4051,12 @@
   function drawShotRings() {
     const colors = getCanvasTheme();
     ctx.save();
-    ctx.strokeStyle = colors.shotRing;
     for (const ring of shotRings) {
       if (ring.delay > 0) continue;
+      ctx.strokeStyle = ring.color || colors.shotRing;
       const progress = 1 - clamp(ring.life / ring.maxLife, 0, 1);
       ctx.globalAlpha = (1 - progress) * 0.72;
-      ctx.lineWidth = Math.max(1.2, 3.2 - progress * 2);
+      ctx.lineWidth = ring.width ? ring.width * (1 - progress * 0.6) : Math.max(1.2, 3.2 - progress * 2);
       ctx.beginPath();
       ctx.arc(ring.x, ring.y, ring.startRadius + ring.growth * progress, 0, Math.PI * 2);
       ctx.stroke();
@@ -4186,16 +4338,16 @@
 
   function drawBall() {
     const skin = getSelectedBallSkin();
-    const colors = skin.colors;
     const skinImage = getBallSkinImage(skin);
     const renderPosition = getBallRenderPosition();
+    const rotation = previousBallRender.rotation + (currentBallRender.rotation - previousBallRender.rotation) * renderAlpha;
     drawFlameAura(renderPosition.x, renderPosition.y);
     ctx.save();
     ctx.translate(renderPosition.x, renderPosition.y);
     applyBallSquash();
-    ctx.rotate(previousBallRender.rotation + (currentBallRender.rotation - previousBallRender.rotation) * renderAlpha);
 
     if (skinImage && skinImage.complete && skinImage.naturalWidth > 0) {
+      ctx.rotate(rotation);
       const assetScale = ball.r / 27;
       const assetSize = 64 * assetScale;
       ctx.drawImage(skinImage, -assetSize * 0.5, -assetSize * 0.5, assetSize, assetSize);
@@ -4203,47 +4355,18 @@
       return;
     }
 
-    const grad = ctx.createRadialGradient(-ball.r * 0.42, -ball.r * 0.48, 1, 1, 2, ball.r * 1.42);
-    grad.addColorStop(0, colors.light);
-    grad.addColorStop(0.34, colors.mid);
-    grad.addColorStop(0.86, colors.dark);
-    grad.addColorStop(1, colors.outline);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(0, 0, ball.r, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (!skin.noSeams) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(0, 0, ball.r - 0.8, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.strokeStyle = colors.seam;
-      ctx.lineWidth = 1.75;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(-ball.r, 0);
-      ctx.lineTo(ball.r, 0);
-      ctx.moveTo(0, -ball.r);
-      ctx.lineTo(0, ball.r);
-      ctx.moveTo(-ball.r * 0.55, -ball.r * 0.85);
-      ctx.quadraticCurveTo(ball.r * 0.2, 0, -ball.r * 0.55, ball.r * 0.85);
-      ctx.moveTo(ball.r * 0.55, -ball.r * 0.85);
-      ctx.quadraticCurveTo(-ball.r * 0.2, 0, ball.r * 0.55, ball.r * 0.85);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    ctx.strokeStyle = colors.outline;
-    ctx.lineWidth = 1.15;
-    ctx.beginPath();
-    ctx.arc(0, 0, ball.r - 0.65, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(255, 255, 255, 0.32)";
-    ctx.beginPath();
-    ctx.ellipse(-5.8, -7.2, 4.4, 2.1, -0.58, 0, Math.PI * 2);
-    ctx.fill();
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const look = speed > 0.001 ? { x: ball.vx / speed, y: ball.vy / speed } : { x: 0, y: 0 };
+    BallArt.drawBall(ctx, skin.art, {
+      radius: ball.r,
+      rotation,
+      time: ballArtClock,
+      heat: ballHeat,
+      heatColors: lastBallHeatColors,
+      flash: ballIgnitionFlash,
+      darkBackground: isCanvasDarkBackground(),
+      look
+    });
     ctx.restore();
   }
 
@@ -5478,33 +5601,134 @@
 
   function createBallPreviewElement(sizeClass, skin) {
     const previewSkin = skin || getSelectedBallSkin();
-    const preview = document.createElement("span");
-    preview.className = "ballPreviewGraphic" + (sizeClass ? " " + sizeClass : "");
-    preview.setAttribute("aria-hidden", "true");
     if (previewSkin.assetPath) {
+      const preview = document.createElement("span");
+      preview.className = "ballPreviewGraphic hasAsset" + (sizeClass ? " " + sizeClass : "");
+      preview.setAttribute("aria-hidden", "true");
       const image = document.createElement("img");
-      preview.classList.add("hasAsset");
       image.className = "ballPreviewImage";
       image.src = previewSkin.assetPath;
       image.alt = "";
       preview.appendChild(image);
       return preview;
     }
-    preview.style.setProperty("--ball-light", previewSkin.colors.light);
-    preview.style.setProperty("--ball-mid", previewSkin.colors.mid);
-    preview.style.setProperty("--ball-dark", previewSkin.colors.dark);
-    preview.style.setProperty("--ball-seam", previewSkin.colors.seam);
-    preview.style.setProperty("--ball-outline", previewSkin.colors.outline);
-    if (!previewSkin.noSeams) {
-      for (const seamName of ["horizontal", "vertical", "leftArc", "rightArc"]) {
-        const seam = document.createElement("span");
-        seam.className = "ballSeam " + seamName;
-        preview.appendChild(seam);
-      }
+    const preview = document.createElement("canvas");
+    preview.className = "ballPreviewCanvas" + (sizeClass ? " " + sizeClass : "");
+    preview.setAttribute("aria-hidden", "true");
+    if (sizeClass === "large") {
+      preview.addEventListener("pointerdown", () => {
+        ballPreviewAnimation.startedAt = performance.now() - 1600;
+        drawAnimatedBallPreview(performance.now());
+      });
     } else {
-      preview.classList.add("noSeams");
+      drawBallPreviewCanvas(preview, previewSkin, { rotation: -0.35, time: 0, heat: 0, flash: 0 });
     }
     return preview;
+  }
+
+  function sizeBallPreviewCanvas(canvasElement, large) {
+    const rect = canvasElement.getBoundingClientRect();
+    const cssWidth = rect.width > 0 ? rect.width : (large ? 160 : 48);
+    const cssHeight = rect.height > 0 ? rect.height : (large ? 180 : 48);
+    const previewDpr = Math.min(window.devicePixelRatio || 1, 3);
+    const pixelWidth = Math.round(cssWidth * previewDpr);
+    const pixelHeight = Math.round(cssHeight * previewDpr);
+    if (canvasElement.width !== pixelWidth) canvasElement.width = pixelWidth;
+    if (canvasElement.height !== pixelHeight) canvasElement.height = pixelHeight;
+    const previewCtx = canvasElement.getContext("2d");
+    previewCtx.setTransform(previewDpr, 0, 0, previewDpr, 0, 0);
+    return { ctx: previewCtx, width: cssWidth, height: cssHeight };
+  }
+
+  function drawBallPreviewCanvas(canvasElement, skin, options) {
+    if (!canvasElement || !skin) return;
+    const large = canvasElement.classList.contains("large");
+    const surface = sizeBallPreviewCanvas(canvasElement, large);
+    const previewCtx = surface.ctx;
+    // The held flame reaches ~1.9 r below the centre and ~3 r above it; leave room for both.
+    const radius = large ? Math.min(surface.width, surface.height) * 0.17 : 20;
+    const centerX = surface.width * 0.5;
+    const centerY = large ? surface.height * 0.68 : surface.height * 0.5;
+    previewCtx.clearRect(0, 0, surface.width, surface.height);
+
+    if (large && options.heat > 0.01) {
+      const preset = BALL_EFFECT_PRESETS[skin.effectPreset] || BALL_EFFECT_PRESETS.classic;
+      const style = getFlameStyle(preset, darkMode);
+      drawCelFlame({ ctx: previewCtx, radius, clock: options.time, chain: 3, held: true, alpha: options.heat }, centerX, centerY, style);
+      if (options.ring > 0) {
+        previewCtx.save();
+        previewCtx.globalAlpha = (1 - options.ring) * 0.75;
+        previewCtx.strokeStyle = style.colors[1];
+        previewCtx.lineWidth = 3 - options.ring * 1.5;
+        previewCtx.beginPath();
+        previewCtx.arc(centerX, centerY, radius * (1.05 + options.ring * 0.8), 0, Math.PI * 2);
+        previewCtx.stroke();
+        previewCtx.restore();
+      }
+    }
+
+    const preset = BALL_EFFECT_PRESETS[skin.effectPreset] || BALL_EFFECT_PRESETS.classic;
+    const heatColors = getFlameStyle(preset, darkMode).colors;
+    previewCtx.save();
+    previewCtx.translate(centerX, centerY);
+    BallArt.drawBall(previewCtx, skin.art, {
+      radius,
+      rotation: options.rotation,
+      time: options.time,
+      heat: options.heat,
+      heatColors,
+      flash: options.flash,
+      darkBackground: darkMode,
+      look: { x: 0.55, y: -0.2 }
+    });
+    previewCtx.restore();
+  }
+
+  function drawAnimatedBallPreview(now) {
+    const canvasElement = customizeBallPreview?.querySelector("canvas.ballPreviewCanvas.large");
+    if (!canvasElement || state !== "customize") return;
+    const skin = getSelectedBallSkin();
+    if (reduceMotion) {
+      drawBallPreviewCanvas(canvasElement, skin, { rotation: -0.35, time: 2, heat: 1, flash: 0, ring: 0 });
+      return;
+    }
+    const elapsed = Math.max(0, (now - ballPreviewAnimation.startedAt) / 1000);
+    const cycle = elapsed % 4;
+    const ignitionAge = cycle - 1.6;
+    const heat = ignitionAge <= 0 ? 0 : clamp(ignitionAge / 0.12, 0, 1);
+    const flash = ignitionAge > 0 && ignitionAge < 0.18 ? 1 - ignitionAge / 0.18 : 0;
+    const ring = ignitionAge > 0 && ignitionAge < 0.42 ? ignitionAge / 0.42 : 0;
+    drawBallPreviewCanvas(canvasElement, skin, {
+      rotation: -0.35 + elapsed * 0.8,
+      time: elapsed,
+      heat,
+      flash,
+      ring
+    });
+  }
+
+  function stopBallPreviewAnimation() {
+    if (ballPreviewAnimation.frameId !== null) window.cancelAnimationFrame(ballPreviewAnimation.frameId);
+    ballPreviewAnimation.frameId = null;
+  }
+
+  function startBallPreviewAnimation() {
+    stopBallPreviewAnimation();
+    if (state !== "customize" || document.visibilityState === "hidden") return;
+    ballPreviewAnimation.startedAt = performance.now();
+    if (reduceMotion) {
+      drawAnimatedBallPreview(ballPreviewAnimation.startedAt);
+      return;
+    }
+    const frame = (now) => {
+      if (state !== "customize" || document.visibilityState === "hidden") {
+        stopBallPreviewAnimation();
+        return;
+      }
+      drawAnimatedBallPreview(now);
+      ballPreviewAnimation.frameId = window.requestAnimationFrame(frame);
+    };
+    ballPreviewAnimation.frameId = window.requestAnimationFrame(frame);
   }
 
   function renderBallCustomizer() {
@@ -5546,6 +5770,8 @@
       option.addEventListener("click", () => selectBallSkin(skin.id));
       ballSkinList.appendChild(option);
     }
+    // The large canvas was just replaced; without a loop (reduced motion) nothing else draws it.
+    if (state === "customize") drawAnimatedBallPreview(performance.now());
   }
 
   function renderThemeCustomizer() {
@@ -5727,6 +5953,7 @@
     customizeOverlay.classList.toggle("active", panelName === "customize");
     themeOverlay?.classList.toggle("active", panelName === "theme");
     syncUiState();
+    if (panelName === "customize") startBallPreviewAnimation();
   }
 
   function openAchievements() {
@@ -6019,6 +6246,10 @@
 
   window.addEventListener("resize", resize, { passive: true });
   window.addEventListener("orientationchange", resize, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") stopBallPreviewAnimation();
+    else if (state === "customize") startBallPreviewAnimation();
+  });
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);

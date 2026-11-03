@@ -805,49 +805,34 @@ body.dark-mode #gameShell {
 
 .customizeBallPreview {
   display: grid;
-  min-height: 112px;
+  min-height: 160px;
   margin-top: 18px;
   place-items: center;
 }
 
+.ballPreviewCanvas,
 .ballPreviewGraphic {
-  --ball-light: #ffb24a;
-  --ball-mid: #f28a27;
-  --ball-dark: #d96a1b;
-  --ball-seam: #2f2923;
-  --ball-outline: #b95a18;
   position: relative;
+  display: block;
   flex: 0 0 auto;
   width: 48px;
   height: 48px;
-  overflow: hidden;
-  border: 2px solid var(--ball-outline);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 31% 25%, rgba(255, 255, 255, 0.34) 0 7%, transparent 17%),
-    radial-gradient(circle at 34% 27%, var(--ball-light), var(--ball-mid) 48%, var(--ball-dark) 100%);
-  box-shadow:
-    inset -4px -5px 8px rgba(0, 0, 0, 0.16),
-    inset 3px 3px 5px rgba(255, 255, 255, 0.13),
-    -7px 9px 12px rgba(70, 72, 76, 0.2);
 }
 
+.ballPreviewCanvas.large,
 .ballPreviewGraphic.large {
-  width: 94px;
-  height: 94px;
-  border-width: 3px;
-  box-shadow:
-    inset -8px -9px 14px rgba(0, 0, 0, 0.17),
-    inset 6px 6px 9px rgba(255, 255, 255, 0.13),
-    -12px 14px 18px rgba(70, 72, 76, 0.2);
+  width: 160px;
+  height: 180px;
+}
+
+.ballPreviewCanvas.large {
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .ballPreviewGraphic.hasAsset,
 .ballPreviewGraphic.hasAsset.large {
   overflow: visible;
-  border: 0;
-  background: none;
-  box-shadow: none;
 }
 
 .ballPreviewGraphic.hasAsset::after {
@@ -872,62 +857,6 @@ body.dark-mode #gameShell {
   display: block;
   width: 118.5%;
   height: 118.5%;
-}
-
-.ballPreviewGraphic .ballSeam {
-  position: absolute;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.ballSeam.horizontal {
-  top: calc(50% - 1px);
-  right: 0;
-  left: 0;
-  border-top: 2px solid var(--ball-seam);
-}
-
-.ballSeam.vertical {
-  top: 0;
-  bottom: 0;
-  left: calc(50% - 1px);
-  border-left: 2px solid var(--ball-seam);
-}
-
-.ballSeam.leftArc,
-.ballSeam.rightArc {
-  top: 7.5%;
-  width: 46%;
-  height: 85%;
-  border-radius: 50%;
-}
-
-.ballSeam.leftArc {
-  left: 13%;
-  border-right: 2px solid var(--ball-seam);
-}
-
-.ballSeam.rightArc {
-  right: 13%;
-  border-left: 2px solid var(--ball-seam);
-}
-
-.ballPreviewGraphic.large .ballSeam.horizontal {
-  top: calc(50% - 1.5px);
-  border-top-width: 3px;
-}
-
-.ballPreviewGraphic.large .ballSeam.vertical {
-  left: calc(50% - 1.5px);
-  border-left-width: 3px;
-}
-
-.ballPreviewGraphic.large .ballSeam.leftArc {
-  border-right-width: 3px;
-}
-
-.ballPreviewGraphic.large .ballSeam.rightArc {
-  border-left-width: 3px;
 }
 
 .ballSkinList {
@@ -1319,13 +1248,14 @@ p {
   }
 
   .customizeBallPreview {
-    min-height: 78px;
+    min-height: 120px;
     margin-top: 10px;
   }
 
+  .ballPreviewCanvas.large,
   .ballPreviewGraphic.large {
-    width: 68px;
-    height: 68px;
+    width: 124px;
+    height: 140px;
   }
 
   .ballSkinList {
@@ -1377,13 +1307,14 @@ p {
   }
 
   .customizeBallPreview {
-    min-height: 72px;
+    min-height: 108px;
     margin-top: 8px;
   }
 
+  .ballPreviewCanvas.large,
   .ballPreviewGraphic.large {
-    width: 64px;
-    height: 64px;
+    width: 108px;
+    height: 122px;
   }
 
   .ballSkinList {
