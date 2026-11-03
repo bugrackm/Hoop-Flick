@@ -49,7 +49,8 @@
   }
 
   function predictTrajectory(start, velocity, params, options) {
-    const { dotSteps, maxPoints = 15 } = options;
+    // afterStep lets the game mirror its own post-step constraints (it returns a body, never mutates).
+    const { dotSteps, maxPoints = 15, afterStep = null } = options;
     let pointCount = options.pointCount;
     let body = { x: start.x, y: start.y, vx: velocity.vx, vy: velocity.vy };
     let bounceExtended = false;
@@ -59,6 +60,7 @@
       let wallHit = false;
       for (let j = 1; j <= dotSteps; j += 1) {
         body = stepBallFlight(body, params, FIXED_DT);
+        if (afterStep) body = afterStep(body, FIXED_DT);
         if (body.wallHit) {
           wallHit = true;
           wallBounces.push({ x: body.x, y: body.y, step: i * dotSteps + j });

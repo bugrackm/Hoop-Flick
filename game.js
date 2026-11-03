@@ -95,23 +95,6 @@
   const WORLD_H = 746;
   const START_HOOP_BOTTOM_OFFSET = 183;
   const HOOP_WIDTH = 72;
-  const HOOP_SPRITE_CONFIG = Object.freeze({
-    sourceSize: 1024,
-    anchorX: 515,
-    anchorY: 358,
-    referenceWidth: 533,
-    layerFiles: Object.freeze({
-      netBack: "net-back.png",
-      rimBack: "rim-back.png",
-      netFront: "net-front.png",
-      rimFront: "rim-front.png"
-    }),
-    layerSourceOffsets: Object.freeze({
-      "assets/hoop/minimal/dark": Object.freeze({
-        rimFront: Object.freeze({ x: 0, y: 123 })
-      })
-    })
-  });
   const GRAVITY = 1420;
   const AIR_DRAG = 0.998;
 
@@ -175,6 +158,13 @@
   // Reachability historically ignores walls; retain that spawn rule.
   const REACHABILITY_PARAMS = Object.freeze({ ...FLIGHT_PARAMS, walls: false });
   const NET_REST_Y = 30;
+  // Launch-net side walls (hoop-local): same line as collideNet, from the top
+  // strand point down to the net mouth. The margin lets the ball press into the
+  // net a little, so diagonal shots up to about 45° still leave cleanly.
+  const LAUNCH_NET_TOP_Y = 7;
+  const LAUNCH_NET_BOTTOM_Y = 52;
+  const LAUNCH_NET_MARGIN = 4;
+  const LAUNCH_NET_BOUNCE = 0.54;
   const BALL_SETTLE_DURATION = 0.24;
   const BALL_SETTLE_INPUT_DELAY = 0.1;
   const TIMED_SHOT_START_SCORE = 100;
@@ -1292,16 +1282,6 @@
   const ACHIEVEMENT_BY_ID = Object.freeze(Object.fromEntries(ACHIEVEMENTS.map((achievement) => [achievement.id, achievement])));
 
   const ballSkinImages = Object.create(null);
-  const hoopSpriteImages = Object.create(null);
-  const hoopSpriteState = {
-    setId: null,
-    generation: 0,
-    started: false,
-    loadedCount: 0,
-    ready: false,
-    failed: false,
-    warningSent: false
-  };
   const TRANSLATIONS = {
     tr: {
       arcadeEyebrow: "ARCADE BASKETBOL",
@@ -1789,7 +1769,8 @@
     rotation: 0,
     angularVelocity: 0,
     settle: null,
-    launchHoopId: -1
+    launchHoopId: -1,
+    launchInsideNet: false
   };
 
   const previousBallRender = { x: ball.x, y: ball.y, rotation: ball.rotation };
@@ -1814,8 +1795,6 @@
   const debugShots = new URLSearchParams(window.location.search).get("debugShots") === "1"
     ? { preview: null, actual: [], steps: 0, recording: false, ratio: 0 }
     : null;
-  // A/B aid while the cel hoops are new: ?hoops=sprites draws the old PNG hoop layers.
-  const useLegacyHoopSprites = new URLSearchParams(window.location.search).get("hoops") === "sprites";
   const RIM_FLASH_DURATION = 0.32;
   // Dev aid: ?perf=1 shows frame timing, split by whether the flame trail is on.
   const perfStats = new URLSearchParams(window.location.search).get("perf") === "1"
@@ -2061,6 +2040,7 @@
     ball.angularVelocity = 0;
     ball.settle = null;
     ball.launchHoopId = -1;
+    ball.launchInsideNet = false;
     airborneTime = 0;
     snapBallRender();
     if (debugShots) debugShots.recording = false;
@@ -2756,6 +2736,7 @@
       ball.lastSecondTimedShot = isLastSecondTimedShotRelease();
       runShotCount = addSafeStat(runShotCount, 1);
       ball.launchHoopId = currentHoopId;
+      ball.launchInsideNet = true;
       const spinDirection = Math.sign(ball.vx) || 1;
       ball.angularVelocity = spinDirection * clamp(Math.abs(ball.vx) * 0.012, 5, 12);
       airborneTime = 0;
@@ -2968,6 +2949,15 @@
     }
   }
 
+  // In-place filter: the per-frame lists are compacted without allocating a new array.
+  function removeExpired(list) {
+    let kept = 0;
+    for (let i = 0; i < list.length; i += 1) {
+      if (list[i].life > 0) list[kept++] = list[i];
+    }
+    list.length = kept;
+  }
+
   function updatePresentation(dt) {
     ballArtClock += dt;
     for (const hoop of hoops) {
@@ -2987,7 +2977,7 @@
       updateBallEffects(dt, !ball.held && !ball.settle);
     }
 
-    particles = particles.filter((p) => p.life > 0);
+    removeExpired(particles);
     for (const p of particles) {
       p.life -= dt;
       p.x += p.vx * dt;
@@ -3004,7 +2994,7 @@
       ring.x += ring.vx * dt;
       ring.y += ring.vy * dt;
     }
-    shotRings = shotRings.filter((ring) => ring.life > 0);
+    removeExpired(shotRings);
     updateHighScoreCelebration(dt);
     shake = Math.max(0, shake - dt * 26);
     comboText = Math.max(0, comboText - dt);
@@ -3211,7 +3201,10 @@
   function collideHoops(dt) {
     for (const hoop of hoops) {
       if (!canHoopAffectBall(hoop)) continue;
-      if (hoop.id === ball.launchHoopId) continue;
+      if (hoop.id === ball.launchHoopId) {
+        if (ball.launchInsideNet) containBallInLaunchNet(hoop, dt);
+        continue;
+      }
       const leftRim = hoopToWorld(hoop, -hoop.w * 0.5, 0);
       const rightRim = hoopToWorld(hoop, hoop.w * 0.5, 0);
       collideCircle(leftRim.x, leftRim.y, RIM_RADIUS, 0.74);
@@ -3224,6 +3217,47 @@
       const boardBottom = hoopToWorld(hoop, boardGeometry.x, boardGeometry.bottom);
       collideSegment(boardTop.x, boardTop.y, boardBottom.x, boardBottom.y, 0.64, dt, "wall");
     }
+  }
+
+  // The launch hoop has no rim collision so diagonal shots leave freely, but a ball
+  // still under the rim line must not leave through the side of the net. Position
+  // based (not swept), so a fast sideways shot cannot tunnel through. The walls stay
+  // upright even on a tilted hoop, so the same shot angles leave every hoop alike.
+  // Pure, so the aim preview can apply exactly the same rule.
+  function getLaunchNetWallStep(hoop, body, dt) {
+    const localX = body.x - hoop.x;
+    const localY = body.y - hoop.y;
+    if (localY < LAUNCH_NET_TOP_Y || localY > LAUNCH_NET_BOTTOM_Y) return { left: true };
+    const depth = (localY - LAUNCH_NET_TOP_Y) / (LAUNCH_NET_BOTTOM_Y - LAUNCH_NET_TOP_Y);
+    const wallX = hoop.w * 0.5 - 8 + (14 - (hoop.w * 0.5 - 8)) * depth;
+    const limit = wallX - LAUNCH_NET_MARGIN;
+    if (Math.abs(localX) <= limit) return { left: false, x: body.x, vx: body.vx, vy: body.vy, side: 0, outwardSpeed: 0 };
+
+    const side = Math.sign(localX);
+    const outwardSpeed = body.vx * side;
+    if (outwardSpeed <= 0) return { left: false, x: hoop.x + side * limit, vx: body.vx, vy: body.vy, side, outwardSpeed: 0 };
+    return {
+      left: false,
+      x: hoop.x + side * limit,
+      vx: -side * outwardSpeed * LAUNCH_NET_BOUNCE,
+      vy: body.vy * Math.pow(0.96, dt * 60),
+      side,
+      outwardSpeed
+    };
+  }
+
+  function containBallInLaunchNet(hoop, dt) {
+    const wall = getLaunchNetWallStep(hoop, ball, dt);
+    if (wall.left) {
+      ball.launchInsideNet = false;
+      return;
+    }
+    ball.x = wall.x;
+    ball.vx = wall.vx;
+    ball.vy = wall.vy;
+    if (wall.outwardSpeed <= 0) return;
+    ball.touchedHoop = true;
+    onBallImpact(-wall.side, 0, wall.outwardSpeed, "net");
   }
 
   function collideNet(hoop, dt) {
@@ -4203,7 +4237,6 @@
     ctx.clearRect(0, 0, viewW, viewH);
     const sx = offsetX + (shake ? random(-shake, shake) : 0);
     const sy = offsetY + (shake ? random(-shake, shake) : 0);
-    const hoopSpritesReady = isHoopSpriteSetReady();
     ctx.save();
     ctx.translate(sx, sy);
     ctx.scale(scale, scale);
@@ -4213,15 +4246,15 @@
     drawWalls();
     drawCurrentScore();
     for (const hoop of hoops) drawHoopMotionPath(hoop);
-    for (const hoop of hoops) drawHoop(hoop, hoopSpritesReady);
+    for (const hoop of hoops) drawHoop(hoop);
     drawActiveCoin();
     drawShotRings();
     drawParticles();
     if (debugShots) drawDebugShots();
     if (drag && ball.held) drawTrajectory();
     drawBall();
-    if (hoopSpritesReady || HoopArt) {
-      for (const hoop of hoops) drawHoopFront(hoop, hoopSpritesReady);
+    if (HoopArt) {
+      for (const hoop of hoops) drawHoopFront(hoop);
     } else if (ball.held || ball.settle) {
       const currentHoop = getHoopById(currentHoopId);
       if (currentHoop) drawHoopFront(currentHoop);
@@ -4280,119 +4313,161 @@
     ctx.restore();
   }
 
+  // The ambient layer is screen-fixed and only changes with theme, mode or canvas size
+  // (plus the geometry motif's very slow drift), so it is rendered into a cached
+  // canvas instead of re-running the gradient and blurred strokes every frame.
+  const AMBIENT_DRIFT_REDRAW_INTERVAL = 0.25;
+  // Accent circles reach past the world edge into the letterbox on wide screens.
+  const AMBIENT_SIDE_MARGIN = 130;
+  const ambientCache = { canvas: null, context: null, colors: null, width: 0, height: 0, drawnAt: 0 };
+
   function drawAmbient() {
     const colors = getCanvasTheme();
     const top = cameraY - 90;
     const height = WORLD_H + 180;
-    const gradient = ctx.createLinearGradient(0, top, 0, top + height);
+    const pixelScale = scale * dpr;
+    const cacheWorldW = WORLD_W + AMBIENT_SIDE_MARGIN * 2;
+    const width = Math.max(1, Math.ceil(cacheWorldW * pixelScale));
+    const pixelHeight = Math.max(1, Math.ceil(height * pixelScale));
+    if (!ambientCache.canvas) {
+      ambientCache.canvas = document.createElement("canvas");
+      ambientCache.context = ambientCache.canvas.getContext("2d");
+    }
+    const cache = ambientCache;
+    if (!cache.context) {
+      renderAmbient(ctx, colors, top, height);
+      return;
+    }
+    const stale = cache.colors !== colors || cache.width !== width || cache.height !== pixelHeight
+      || (colors.motif === "geometry" && Math.abs(simulationTime - cache.drawnAt) >= AMBIENT_DRIFT_REDRAW_INTERVAL);
+    if (stale) {
+      if (cache.canvas.width !== width || cache.canvas.height !== pixelHeight) {
+        cache.canvas.width = width;
+        cache.canvas.height = pixelHeight;
+      }
+      cache.context.setTransform(1, 0, 0, 1, 0, 0);
+      cache.context.clearRect(0, 0, width, pixelHeight);
+      cache.context.setTransform(width / cacheWorldW, 0, 0, pixelHeight / height, AMBIENT_SIDE_MARGIN * width / cacheWorldW, 0);
+      renderAmbient(cache.context, colors, 0, height);
+      cache.colors = colors;
+      cache.width = width;
+      cache.height = pixelHeight;
+      cache.drawnAt = simulationTime;
+    }
+    ctx.drawImage(cache.canvas, -AMBIENT_SIDE_MARGIN, top, cacheWorldW, height);
+  }
+
+  function renderAmbient(target, colors, top, height) {
+    const gradient = target.createLinearGradient(0, top, 0, top + height);
     gradient.addColorStop(0, colors.backgroundTop);
     gradient.addColorStop(1, colors.backgroundBottom);
 
-    ctx.save();
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, top, WORLD_W, height);
-    ctx.fillStyle = colors.backgroundAccent;
-    ctx.beginPath();
-    ctx.arc(WORLD_W * 0.82, top + height * 0.16, 118, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(WORLD_W * 0.16, top + height * 0.76, 86, 0, Math.PI * 2);
-    ctx.fill();
+    target.save();
+    target.fillStyle = gradient;
+    target.fillRect(0, top, WORLD_W, height);
+    target.fillStyle = colors.backgroundAccent;
+    target.beginPath();
+    target.arc(WORLD_W * 0.82, top + height * 0.16, 118, 0, Math.PI * 2);
+    target.fill();
+    target.beginPath();
+    target.arc(WORLD_W * 0.16, top + height * 0.76, 86, 0, Math.PI * 2);
+    target.fill();
     if (colors.motif === "none") {
-      ctx.restore();
+      target.restore();
       return;
     }
-    ctx.strokeStyle = colors.geometryLine || (darkMode ? "rgba(255, 214, 255, 0.18)" : "rgba(255, 255, 255, 0.46)");
-    ctx.lineWidth = 2.1;
-    ctx.shadowColor = colors.geometryGlow || (darkMode ? "rgba(215, 120, 255, 0.18)" : "rgba(255, 255, 255, 0.46)");
-    ctx.shadowBlur = darkMode ? 6 : 9;
+    target.strokeStyle = colors.geometryLine || (darkMode ? "rgba(255, 214, 255, 0.18)" : "rgba(255, 255, 255, 0.46)");
+    target.lineWidth = 2.1;
+    target.shadowColor = colors.geometryGlow || (darkMode ? "rgba(215, 120, 255, 0.18)" : "rgba(255, 255, 255, 0.46)");
+    // shadowBlur ignores the transform; the cache is 1:1 with screen pixels, so the look is unchanged.
+    target.shadowBlur = darkMode ? 6 : 9;
     if (colors.motif === "geometry") {
-      drawAmbientRing(WORLD_W * 0.26, top + 118, 46, 0.58);
-      drawAmbientRing(WORLD_W * 0.22, top + 478, 36, 0.42);
-      drawAmbientTriangle(WORLD_W * 0.74, top + 214, 78, -0.22 + simulationTime * 0.012, 0.42);
-      drawAmbientTriangle(WORLD_W * 0.68, top + 520, 84, 0.18 - simulationTime * 0.01, 0.34);
-      drawAmbientTriangle(WORLD_W * 0.58, top + 654, 70, -0.4, 0.3);
+      drawAmbientRing(target, WORLD_W * 0.26, top + 118, 46, 0.58);
+      drawAmbientRing(target, WORLD_W * 0.22, top + 478, 36, 0.42);
+      drawAmbientTriangle(target, WORLD_W * 0.74, top + 214, 78, -0.22 + simulationTime * 0.012, 0.42);
+      drawAmbientTriangle(target, WORLD_W * 0.68, top + 520, 84, 0.18 - simulationTime * 0.01, 0.34);
+      drawAmbientTriangle(target, WORLD_W * 0.58, top + 654, 70, -0.4, 0.3);
     } else if (colors.motif === "sun") {
-      drawAmbientSun(WORLD_W * 0.78, top + 172, 72, 0.28);
-      drawAmbientRing(WORLD_W * 0.22, top + 506, 42, 0.22);
+      drawAmbientSun(target, WORLD_W * 0.78, top + 172, 72, 0.28);
+      drawAmbientRing(target, WORLD_W * 0.22, top + 506, 42, 0.22);
     } else if (colors.motif === "court") {
-      drawAmbientCourtLines(top, height, 0.26);
+      drawAmbientCourtLines(target, top, height, 0.26);
     } else if (colors.motif === "vignette") {
-      drawAmbientRing(WORLD_W * 0.5, top + height * 0.48, 118, 0.14);
+      drawAmbientRing(target, WORLD_W * 0.5, top + height * 0.48, 118, 0.14);
     }
-    ctx.shadowBlur = 0;
-    ctx.restore();
+    target.shadowBlur = 0;
+    target.restore();
   }
 
-  function drawAmbientRing(x, y, radius, alpha) {
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+  function drawAmbientRing(target, x, y, radius, alpha) {
+    target.save();
+    target.globalAlpha *= alpha;
+    target.beginPath();
+    target.arc(x, y, radius, 0, Math.PI * 2);
+    target.stroke();
+    target.restore();
   }
 
-  function drawAmbientTriangle(x, y, size, rotation, alpha) {
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    ctx.translate(x, y);
-    ctx.rotate(rotation);
-    ctx.beginPath();
+  function drawAmbientTriangle(target, x, y, size, rotation, alpha) {
+    target.save();
+    target.globalAlpha *= alpha;
+    target.translate(x, y);
+    target.rotate(rotation);
+    target.beginPath();
     for (let i = 0; i < 3; i += 1) {
       const angle = -Math.PI * 0.5 + i * Math.PI * 2 / 3;
       const px = Math.cos(angle) * size;
       const py = Math.sin(angle) * size * 0.62;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      if (i === 0) target.moveTo(px, py);
+      else target.lineTo(px, py);
     }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.translate(size * 0.18, size * 0.12);
-    ctx.beginPath();
+    target.closePath();
+    target.stroke();
+    target.translate(size * 0.18, size * 0.12);
+    target.beginPath();
     for (let i = 0; i < 3; i += 1) {
       const angle = -Math.PI * 0.5 + i * Math.PI * 2 / 3;
       const px = Math.cos(angle) * size * 0.88;
       const py = Math.sin(angle) * size * 0.54;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      if (i === 0) target.moveTo(px, py);
+      else target.lineTo(px, py);
     }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
+    target.closePath();
+    target.stroke();
+    target.restore();
   }
 
-  function drawAmbientSun(x, y, radius, alpha) {
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.stroke();
+  function drawAmbientSun(target, x, y, radius, alpha) {
+    target.save();
+    target.globalAlpha *= alpha;
+    target.beginPath();
+    target.arc(x, y, radius, 0, Math.PI * 2);
+    target.stroke();
     for (let i = 0; i < 8; i += 1) {
       const angle = (Math.PI * 2 * i) / 8;
-      ctx.beginPath();
-      ctx.moveTo(x + Math.cos(angle) * (radius + 10), y + Math.sin(angle) * (radius + 10));
-      ctx.lineTo(x + Math.cos(angle) * (radius + 34), y + Math.sin(angle) * (radius + 34));
-      ctx.stroke();
+      target.beginPath();
+      target.moveTo(x + Math.cos(angle) * (radius + 10), y + Math.sin(angle) * (radius + 10));
+      target.lineTo(x + Math.cos(angle) * (radius + 34), y + Math.sin(angle) * (radius + 34));
+      target.stroke();
     }
-    ctx.restore();
+    target.restore();
   }
 
-  function drawAmbientCourtLines(top, height, alpha) {
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    ctx.beginPath();
-    ctx.moveTo(WORLD_W * 0.5, top + 60);
-    ctx.lineTo(WORLD_W * 0.5, top + height - 60);
-    ctx.moveTo(WORLD_W * 0.16, top + height * 0.28);
-    ctx.lineTo(WORLD_W * 0.84, top + height * 0.28);
-    ctx.moveTo(WORLD_W * 0.16, top + height * 0.72);
-    ctx.lineTo(WORLD_W * 0.84, top + height * 0.72);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(WORLD_W * 0.5, top + height * 0.5, 58, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+  function drawAmbientCourtLines(target, top, height, alpha) {
+    target.save();
+    target.globalAlpha *= alpha;
+    target.beginPath();
+    target.moveTo(WORLD_W * 0.5, top + 60);
+    target.lineTo(WORLD_W * 0.5, top + height - 60);
+    target.moveTo(WORLD_W * 0.16, top + height * 0.28);
+    target.lineTo(WORLD_W * 0.84, top + height * 0.28);
+    target.moveTo(WORLD_W * 0.16, top + height * 0.72);
+    target.lineTo(WORLD_W * 0.84, top + height * 0.72);
+    target.stroke();
+    target.beginPath();
+    target.arc(WORLD_W * 0.5, top + height * 0.5, 58, 0, Math.PI * 2);
+    target.stroke();
+    target.restore();
   }
 
   function drawWalls() {
@@ -4569,28 +4644,7 @@
     ctx.scale(scale, scale);
   }
 
-  function drawHoopSpriteLayer(layerName, hoop) {
-    const image = hoopSpriteImages[layerName];
-    const sourceSize = HOOP_SPRITE_CONFIG.sourceSize;
-    const spriteScale = hoop.w / HOOP_SPRITE_CONFIG.referenceWidth;
-    const destinationSize = sourceSize * spriteScale;
-    const sourceOffset = HOOP_SPRITE_CONFIG.layerSourceOffsets[hoopSpriteState.setId]?.[layerName];
-    const offsetX = sourceOffset?.x || 0;
-    const offsetY = sourceOffset?.y || 0;
-    ctx.drawImage(
-      image,
-      0,
-      0,
-      sourceSize,
-      sourceSize,
-      (-HOOP_SPRITE_CONFIG.anchorX + offsetX) * spriteScale,
-      (-HOOP_SPRITE_CONFIG.anchorY + offsetY) * spriteScale,
-      destinationSize,
-      destinationSize
-    );
-  }
-
-  function drawHoop(hoop, useHoopSprites) {
+  function drawHoop(hoop) {
     const colors = getCanvasTheme();
     const rimY = 0;
     const left = -hoop.w * 0.5;
@@ -4607,7 +4661,7 @@
     applyHoopSpawnTransform(hoop);
     ctx.rotate(hoop.rotation + deformation.visualTilt);
 
-    if (!useHoopSprites && HoopArt) {
+    if (HoopArt) {
       HoopArt.drawHoopBack(ctx, getHoopArtPalette(), getHoopArtOptions(hoop, deformation, boardGeometry));
       ctx.restore();
       return;
@@ -4628,13 +4682,6 @@
       ctx.lineTo(boardGeometry.x, boardGeometry.bottom);
       ctx.stroke();
       ctx.restore();
-    }
-
-    if (useHoopSprites) {
-      drawHoopSpriteLayer("netBack", hoop);
-      drawHoopSpriteLayer("rimBack", hoop);
-      ctx.restore();
-      return;
     }
 
     // Thin premium net: short, bright, and airy like the soft arcade references.
@@ -4722,28 +4769,16 @@
     };
   }
 
-  function drawHoopFront(hoop, useHoopSprites) {
+  function drawHoopFront(hoop) {
     const deformation = getHoopDeformation(hoop);
 
-    if (!useHoopSprites && HoopArt) {
+    if (HoopArt) {
       ctx.save();
       if (hoop.role === HOOP_ROLE.INACTIVE) ctx.globalAlpha = 0.42;
       ctx.translate(hoop.x + deformation.offsetX, hoop.y + deformation.offsetY);
       applyHoopSpawnTransform(hoop);
       ctx.rotate(hoop.rotation + deformation.visualTilt);
       HoopArt.drawHoopFront(ctx, getHoopArtPalette(), getHoopArtOptions(hoop, deformation, null));
-      ctx.restore();
-      return;
-    }
-
-    if (useHoopSprites) {
-      ctx.save();
-      if (hoop.role === HOOP_ROLE.INACTIVE) ctx.globalAlpha = 0.42;
-      ctx.translate(hoop.x + deformation.offsetX, hoop.y + deformation.offsetY);
-      applyHoopSpawnTransform(hoop);
-      ctx.rotate(hoop.rotation + deformation.visualTilt);
-      drawHoopSpriteLayer("netFront", hoop);
-      drawHoopSpriteLayer("rimFront", hoop);
       ctx.restore();
       return;
     }
@@ -4813,81 +4848,24 @@
     return ballSkinImages[skin.id];
   }
 
-  function getActiveHoopSpriteSet() {
-    const themeId = THEMES[selectedThemeId] ? selectedThemeId : "gym";
-    const directory = themeId === "gym"
-      ? "assets/hoop/classic"
-      : `assets/hoop/${themeId}/${darkMode ? "dark" : "light"}`;
-    const layers = Object.fromEntries(
-      Object.entries(HOOP_SPRITE_CONFIG.layerFiles).map(([layerName, fileName]) => [
-        layerName,
-        `${directory}/${fileName}`
-      ])
-    );
-    return { id: directory, layers };
-  }
-
-  function failHoopSpriteSet(message, generation = hoopSpriteState.generation) {
-    if (generation !== hoopSpriteState.generation) return;
-    hoopSpriteState.failed = true;
-    hoopSpriteState.ready = false;
-    if (hoopSpriteState.warningSent) return;
-    hoopSpriteState.warningSent = true;
-    console.warn("[Hoop Flick] Hoop sprite set unavailable; procedural fallback is active. " + message);
-  }
-
-  function preloadHoopSpriteSet() {
-    // Sprites load only for the A/B flag, or as the fallback if hoopArt.js failed to load.
-    if (!useLegacyHoopSprites && HoopArt) return;
-    const spriteSet = getActiveHoopSpriteSet();
-    if (hoopSpriteState.started && hoopSpriteState.setId === spriteSet.id) return;
-    hoopSpriteState.setId = spriteSet.id;
-    hoopSpriteState.generation += 1;
-    hoopSpriteState.started = true;
-    hoopSpriteState.loadedCount = 0;
-    hoopSpriteState.ready = false;
-    hoopSpriteState.failed = false;
-    hoopSpriteState.warningSent = false;
-    const generation = hoopSpriteState.generation;
-    if (typeof Image === "undefined") {
-      failHoopSpriteSet("Image loading is unsupported.", generation);
-      return;
-    }
-
-    const layers = Object.entries(spriteSet.layers);
-    for (const [layerName, assetPath] of layers) {
-      const image = new Image();
-      image.decoding = "async";
-      image.onload = () => {
-        if (generation !== hoopSpriteState.generation) return;
-        if (
-          image.naturalWidth !== HOOP_SPRITE_CONFIG.sourceSize
-          || image.naturalHeight !== HOOP_SPRITE_CONFIG.sourceSize
-        ) {
-          failHoopSpriteSet(layerName + " has unexpected dimensions.", generation);
-          return;
-        }
-        hoopSpriteState.loadedCount += 1;
-        if (!hoopSpriteState.failed && hoopSpriteState.loadedCount === layers.length) {
-          hoopSpriteState.ready = true;
-          draw();
-        }
-      };
-      image.onerror = () => failHoopSpriteSet(layerName + " failed to load.", generation);
-      image.src = assetPath;
-      hoopSpriteImages[layerName] = image;
-    }
-  }
-
-  function isHoopSpriteSetReady() {
-    return hoopSpriteState.ready && !hoopSpriteState.failed;
-  }
-
   function predictShot(pull, velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS)) {
+    // Mirror the launch-net walls so a sideways shot's dots bounce back like the ball will.
+    const launchHoop = getHoopById(currentHoopId);
+    let insideNet = Boolean(launchHoop);
+    const afterStep = launchHoop ? (body, dt) => {
+      if (!insideNet) return body;
+      const wall = getLaunchNetWallStep(launchHoop, body, dt);
+      if (wall.left) {
+        insideNet = false;
+        return body;
+      }
+      return { ...body, x: wall.x, vx: wall.vx, vy: wall.vy };
+    } : null;
     return Physics.predictTrajectory(ball, velocity, FLIGHT_PARAMS, {
       dotSteps: TRAJECTORY_DOT_STEPS,
       pointCount: Math.round(7 + pull.ratio * 6),
-      maxPoints: 15
+      maxPoints: 15,
+      afterStep
     });
   }
 
@@ -5125,14 +5103,23 @@
     ctx.restore();
   }
 
+  // Called many times per frame; theme data is static, so build each palette once.
+  const canvasThemeCache = new Map();
+
   function getCanvasTheme() {
     const theme = THEMES[selectedThemeId] || THEMES.gym;
-    return {
-      ...(darkMode ? theme.colors.dark : theme.colors.light),
-      themeId: theme.id,
-      bgStyle: theme.bgStyle,
-      motif: theme.motif
-    };
+    const key = theme.id + (darkMode ? "|dark" : "|light");
+    let colors = canvasThemeCache.get(key);
+    if (!colors) {
+      colors = {
+        ...(darkMode ? theme.colors.dark : theme.colors.light),
+        themeId: theme.id,
+        bgStyle: theme.bgStyle,
+        motif: theme.motif
+      };
+      canvasThemeCache.set(key, colors);
+    }
+    return colors;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -6073,7 +6060,6 @@
     document.body.classList.toggle("dark-mode", darkMode);
     themeColor.setAttribute("content", darkMode ? "#101923" : "#f7f3e8");
     writeBooleanPreference(DARK_MODE_KEY, darkMode);
-    preloadHoopSpriteSet();
     if (userPaused) draw();
     renderThemeCustomizer();
     syncControlLabels();
@@ -6586,7 +6572,6 @@
 
   function applyTheme(themeId, saveNow) {
     selectedThemeId = themeId;
-    preloadHoopSpriteSet();
     writeThemePreference(themeId, saveNow);
     syncEconomyBalances();
     renderThemeCustomizer();
@@ -7080,6 +7065,5 @@
     }
   });
 
-  preloadHoopSpriteSet();
   bootGame();
 })();
