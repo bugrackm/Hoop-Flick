@@ -10,7 +10,7 @@
   <title>Hoop Flick</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
-  <link rel="stylesheet" href="style.css?v=release-ada62960a308">
+  <link rel="stylesheet" href="style.css?v=release-111ec7212650">
 </head>
 <body> 
   <main id="gameShell" aria-label="Hoop Flick basketball arcade game">
@@ -152,6 +152,7 @@
       <div class="panel compact">
         <h2 data-i18n="gameOver">Oyun Bitti</h2>
         <p id="finalScore">Skor 0</p>
+        <div id="gameOverChallenge" class="gameOverChallenge" hidden></div>
         <button id="restartButton" class="primaryButton" type="button" data-i18n="restart">Yeniden Başlat</button>
         <button id="gameOverMenuButton" class="secondaryButton overlaySecondaryButton" type="button" data-i18n="mainMenu">Ana Menü</button>
       </div>
@@ -166,10 +167,24 @@
       </div>
     </section>
 
+    <section id="shopDialogOverlay" class="overlay shopDialogOverlay" role="dialog" aria-modal="true" aria-labelledby="shopDialogTitle" aria-describedby="shopDialogText" aria-hidden="true" inert>
+      <div class="panel compact shopDialogPanel">
+        <div id="shopDialogPreview" class="shopDialogPreview"></div>
+        <h3 id="shopDialogTitle"></h3>
+        <p id="shopDialogText" class="shopDialogText"></p>
+        <p id="shopDialogDetail" class="shopDialogDetail" hidden></p>
+        <div id="shopDialogProgress" class="shopDialogProgress" hidden></div>
+        <div class="shopDialogActions">
+          <button id="shopDialogCancelButton" class="secondaryButton" type="button" data-i18n="cancel">Vazgeç</button>
+          <button id="shopDialogConfirmButton" class="primaryButton" type="button">Tamam</button>
+        </div>
+      </div>
+    </section>
+
     <div id="achievementToast" class="achievementToast" role="status" aria-live="polite" aria-atomic="true">
-      <span class="achievementToastMedal" aria-hidden="true">★</span>
+      <span id="achievementToastMedal" class="achievementToastMedal" aria-hidden="true">★</span>
       <span>
-        <strong data-i18n="achievementUnlocked">Başarım açıldı</strong>
+        <strong id="achievementToastTitle">Başarım açıldı</strong>
         <span id="achievementToastName"></span>
       </span>
     </div>
@@ -203,7 +218,7 @@
     </div>
   </main>
   <script src="physics.js?v=release-1c239772bc7a"></script>
-  <script src="ballArt.js?v=release-8a7a80534aa3"></script>
-  <script src="game.js?v=release-840f4a4b4142"></script>
+  <script src="ballArt.js?v=release-90beb5995365"></script>
+  <script src="game.js?v=release-f03a732a336e"></script>
 </body>
 </html>

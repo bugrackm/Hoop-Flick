@@ -54,11 +54,16 @@ test('every ball skin has a supported art definition', () => {
   const game = loadGame();
   const skins = JSON.parse(game.evaluate('JSON.stringify(BALL_SKINS)'));
   const supported = new Set(loadBallArtWithRandomGuard().SKIN_IDS);
-  assert.equal(Object.keys(skins).length, 14);
+  const shopIds = JSON.parse(game.evaluate('JSON.stringify(BALL_SKIN_DISPLAY_ORDER)'));
+  const challengeIds = JSON.parse(game.evaluate('JSON.stringify(CHALLENGE_SKIN_ORDER)'));
+  const presets = JSON.parse(game.evaluate('JSON.stringify(BALL_EFFECT_PRESETS)'));
+  assert.equal(Object.keys(skins).length, 20);
+  assert.deepEqual([...shopIds, ...challengeIds].sort(), Object.keys(skins).sort(), 'every skin is listed exactly once');
   for (const [skinId, skin] of Object.entries(skins)) {
     assert.ok(skin.art, `${skinId} needs an art definition`);
     assert.equal(skin.art.id, skinId);
     assert.ok(supported.has(skin.art.id), `${skinId} needs a registered painter`);
+    assert.ok(presets[skin.effectPreset], `${skinId} needs an existing effect preset`);
   }
 });
 

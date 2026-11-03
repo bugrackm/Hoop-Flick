@@ -387,13 +387,271 @@
     ctx.stroke();
   }
 
+  // Deterministic per-tile/per-beat choice (the draw path never uses Math.random).
+  function hashCell(a, b, c) {
+    return (Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) >>> 0;
+  }
+
+  function fillTriangle(ctx, r, a, b, c, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(a[0] * r, a[1] * r);
+    ctx.lineTo(b[0] * r, b[1] * r);
+    ctx.lineTo(c[0] * r, c[1] * r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // A brilliant-cut gem: a hexagonal table, a ring of star facets and a ring of girdle facets.
+  const CRYSTAL_INNER = [0, 1, 2, 3, 4, 5].map((i) => [Math.cos(i * TAU / 6 + 0.3) * 0.48, Math.sin(i * TAU / 6 + 0.3) * 0.48]);
+  const CRYSTAL_OUTER = [0, 1, 2, 3, 4, 5].map((i) => [Math.cos((i + 0.5) * TAU / 6 + 0.3) * 1.3, Math.sin((i + 0.5) * TAU / 6 + 0.3) * 1.3]);
+
+  function crystalBase(ctx, r, art) {
+    for (let i = 0; i < 6; i += 1) {
+      const next = (i + 1) % 6;
+      fillTriangle(ctx, r, CRYSTAL_INNER[i], CRYSTAL_INNER[next], CRYSTAL_OUTER[i], i % 2 ? art.body : art.facetDark);
+      fillTriangle(ctx, r, CRYSTAL_INNER[next], CRYSTAL_OUTER[i], CRYSTAL_OUTER[next], i % 2 ? art.facetLight : art.body);
+    }
+    ctx.fillStyle = art.facetLight;
+    ctx.beginPath();
+    CRYSTAL_INNER.forEach((point, i) => (i ? ctx.lineTo(point[0] * r, point[1] * r) : ctx.moveTo(point[0] * r, point[1] * r)));
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = art.edge;
+    ctx.lineWidth = 0.04 * r;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < 6; i += 1) {
+      const next = (i + 1) % 6;
+      ctx.moveTo(CRYSTAL_INNER[i][0] * r, CRYSTAL_INNER[i][1] * r);
+      ctx.lineTo(CRYSTAL_OUTER[i][0] * r, CRYSTAL_OUTER[i][1] * r);
+      ctx.lineTo(CRYSTAL_INNER[next][0] * r, CRYSTAL_INNER[next][1] * r);
+    }
+    ctx.stroke();
+  }
+
+  function crystalGlow(ctx, r, art, time, heat) {
+    const twinkle = (offset, x, y, size) => {
+      const phase = (time + offset) % 2.2;
+      const u = phase < 0.45 ? phase / 0.45 : 0;
+      drawSparkle(ctx, x * r, y * r, Math.sin(u * Math.PI) * size * (1 + heat * 0.3) * r, art.sparkle, 0.95);
+    };
+    twinkle(0, -0.3, -0.42, 0.36);
+    twinkle(1.1, 0.4, 0.32, 0.24);
+  }
+
+  // Three layers of flame feathers fanning out from below the centre.
+  const PHOENIX_LAYERS = [
+    ["feather", 1.3, 0.36, 7, 1.2],
+    ["featherInner", 0.96, 0.3, 6, 0.98],
+    ["featherTip", 0.58, 0.22, 5, 0.76]
+  ];
+
+  function phoenixBase(ctx, r, art, time, heat) {
+    const originY = 0.66;
+    for (const [key, length, width, count, spread] of PHOENIX_LAYERS) {
+      const color = key === "featherTip" ? mixColor(art.featherTip, "#ffffff", heat * 0.6) : art[key];
+      const sway = key === "feather" ? 0 : 0.05 * Math.sin(time * 5 + length * 4);
+      for (let i = 0; i < count; i += 1) {
+        const angle = -spread + (2 * spread * i) / (count - 1) + sway;
+        const x = Math.sin(angle) * length * 0.5;
+        const y = originY - Math.cos(angle) * length * 0.5;
+        drawTeardrop(ctx, x * r, y * r, length * r, width * r, angle, color);
+      }
+    }
+  }
+
+  // Overlapping scales, top rows first so each row tucks under the next.
+  function dragonBase(ctx, r, art) {
+    const size = 0.34;
+    ctx.lineWidth = 0.05 * r;
+    ctx.strokeStyle = art.scaleEdge;
+    for (let row = 0; row < 9; row += 1) {
+      const y = -1.3 + row * 0.29;
+      const shift = row % 2 ? size : 0;
+      for (let x = -1.4 + shift; x <= 1.4; x += size * 2) {
+        ctx.fillStyle = row % 2 ? art.scale : mixColor(art.scale, art.body, 0.45);
+        ctx.beginPath();
+        ctx.arc(x * r, y * r, size * r, 0, Math.PI);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x * r, y * r, size * r * 0.92, 0.25, Math.PI - 0.25);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // A slit-pupil eye that stays upright, blinks and looks where the ball is heading.
+  function dragonGlow(ctx, r, art, time, heat, options) {
+    const blinkPhase = time % 4.1;
+    const open = blinkPhase > 3.86 && blinkPhase < 4.0 ? 0.12 : 1;
+    const look = options.look || { x: 0, y: 0 };
+    const eyeW = 0.64 * r;
+    const eyeH = 0.3 * r * open;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-eyeW, 0);
+    ctx.quadraticCurveTo(0, -eyeH * 2, eyeW, 0);
+    ctx.quadraticCurveTo(0, eyeH * 2, -eyeW, 0);
+    ctx.closePath();
+    ctx.fillStyle = mixColor(art.eye, "#fff6c8", heat * 0.5);
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    fillCircle(ctx, 0, 0, 0.3 * r, mixColor(art.eye, "#ff7a1f", 0.45));
+    fillCircle(ctx, 0, 0, 0.21 * r, mixColor(art.eye, "#fff6c8", heat * 0.5));
+    const pupilX = clamp(look.x || 0, -1, 1) * 0.16 * r;
+    ctx.fillStyle = art.pupil;
+    ctx.beginPath();
+    ctx.ellipse(pupilX, 0, 0.065 * r, 0.27 * r, 0, 0, TAU);
+    ctx.fill();
+    fillCircle(ctx, pupilX - 0.13 * r, -0.1 * r, 0.05 * r, "#ffffff");
+    ctx.restore();
+    ctx.strokeStyle = art.outline;
+    ctx.lineWidth = 0.075 * r;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function stormBase(ctx, r, art) {
+    drawCapsule(ctx, -0.95 * r, -0.45 * r, 0.25 * r, -0.62 * r, 0.34 * r, art.cloud);
+    drawCapsule(ctx, -0.2 * r, 0.05 * r, 0.95 * r, -0.12 * r, 0.3 * r, art.cloud);
+    drawCapsule(ctx, -0.85 * r, 0.55 * r, 0.35 * r, 0.42 * r, 0.32 * r, art.cloud);
+    drawCapsule(ctx, -0.7 * r, -0.5 * r, -0.05 * r, -0.6 * r, 0.12 * r, art.cloudLight);
+    drawCapsule(ctx, 0.05 * r, -0.02 * r, 0.65 * r, -0.12 * r, 0.1 * r, art.cloudLight);
+    drawCapsule(ctx, -0.6 * r, 0.5 * r, 0.05 * r, 0.42 * r, 0.1 * r, art.cloudLight);
+  }
+
+  const STORM_BOLT = [[0.18, -0.92], [-0.16, -0.18], [0.12, -0.12], [-0.22, 0.86]];
+
+  // The bolt idles dim and strikes in a double flicker; on fire it stays lit.
+  function stormGlow(ctx, r, art, time, heat) {
+    const phase = time % 2.6;
+    const strike = (phase < 0.1 || (phase > 0.18 && phase < 0.26)) ? 1 : 0;
+    const lit = Math.max(strike, heat);
+    if (strike) {
+      ctx.save();
+      ctx.globalAlpha *= 0.28;
+      fillCircle(ctx, 0, 0, r, art.cloudLight);
+      ctx.restore();
+    }
+    const points = STORM_BOLT.map((point) => [point[0] * r, point[1] * r]);
+    ctx.save();
+    ctx.globalAlpha *= 0.9 + 0.1 * lit;
+    strokePolyline(ctx, points, art.bolt, (0.14 + 0.06 * lit) * r);
+    strokePolyline(ctx, points, lit ? art.boltCore : mixColor(art.bolt, "#ffffff", 0.5), (0.04 + 0.02 * lit) * r);
+    ctx.restore();
+  }
+
+  // Mirror tiles on a latitude/longitude grid projected onto the sphere: tiles narrow toward
+  // the edges and poles, and the longitudes turn with the ball like a spinning disco ball.
+  const DISCO_ROWS = 10;
+  const DISCO_COLUMNS = 20;
+
+  function forEachDiscoTile(r, rotation, visit) {
+    const step = TAU / DISCO_COLUMNS;
+    const spin = rotation * 0.5;
+    const turns = Math.floor(spin / step);
+    const offset = spin - turns * step;
+    for (let row = 0; row < DISCO_ROWS; row += 1) {
+      const top = -Math.PI / 2 + (row * Math.PI) / DISCO_ROWS;
+      const bottom = top + Math.PI / DISCO_ROWS;
+      const half = Math.cos((top + bottom) / 2);
+      const y0 = Math.sin(top) * r;
+      const y1 = Math.sin(bottom) * r;
+      for (let column = -DISCO_COLUMNS / 4 - 1; column <= DISCO_COLUMNS / 4; column += 1) {
+        const start = column * step + offset;
+        const left = Math.max(-Math.PI / 2, start);
+        const right = Math.min(Math.PI / 2, start + step);
+        if (right <= left) continue;
+        const x0 = Math.sin(left) * half * r;
+        const x1 = Math.sin(right) * half * r;
+        visit(x0, y0, x1 - x0, y1 - y0, row, column - turns);
+      }
+    }
+  }
+
+  function discoBase(ctx, r, art, time, heat, options) {
+    const shades = [art.body, art.tileLight, mixColor(art.body, art.shadow, 0.3), art.tileLight, art.body];
+    forEachDiscoTile(r, options.rotation || 0, (x, y, w, h, row, id) => {
+      ctx.fillStyle = shades[hashCell(row, id, 7) % shades.length];
+      ctx.fillRect(x, y, w, h);
+    });
+    ctx.strokeStyle = art.tileLine;
+    ctx.lineWidth = 0.035 * r;
+    forEachDiscoTile(r, options.rotation || 0, (x, y, w, h) => ctx.strokeRect(x, y, w, h));
+  }
+
+  function discoGlow(ctx, r, art, time, heat, options) {
+    const beat = Math.floor(time * 3);
+    const odds = heat > 0.5 ? 4 : 7;
+    ctx.save();
+    ctx.globalAlpha *= 0.85;
+    forEachDiscoTile(r, options.rotation || 0, (x, y, w, h, row, id) => {
+      const pick = hashCell(row, id, beat);
+      if (pick % odds) return;
+      ctx.fillStyle = art.tileColors[(pick >>> 4) % art.tileColors.length];
+      const inset = Math.min(0.02 * r, w * 0.2);
+      ctx.fillRect(x + inset, y + inset, w - inset * 2, h - inset * 2);
+    });
+    ctx.restore();
+    const phase = time % 1.4;
+    const u = phase < 0.35 ? phase / 0.35 : 0;
+    drawSparkle(ctx, 0.36 * r, -0.4 * r, Math.sin(u * Math.PI) * 0.36 * r, art.sparkle, 1);
+  }
+
+  const GALAXY_STARS = [
+    [-0.62, -0.38, 0.05], [0.55, -0.58, 0.04], [0.7, 0.2, 0.05], [-0.4, 0.62, 0.04],
+    [0.18, 0.72, 0.035], [-0.78, 0.12, 0.035], [0.32, -0.2, 0.03], [-0.12, -0.74, 0.04]
+  ];
+
+  function galaxyBase(ctx, r, art) {
+    for (const arm of [0, Math.PI]) {
+      const points = [];
+      for (let step = 0; step <= 12; step += 1) {
+        const u = step / 12;
+        const radius = 0.1 + u * 0.95;
+        const angle = arm + u * 3.1;
+        points.push([Math.cos(angle) * radius * r, Math.sin(angle) * radius * r]);
+      }
+      strokePolyline(ctx, points, art.nebula, 0.34 * r);
+      strokePolyline(ctx, points.slice(0, 9), art.nebulaHot, 0.13 * r);
+    }
+    ctx.fillStyle = art.core;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 0.2 * r, 0.15 * r, 0.5, 0, TAU);
+    ctx.fill();
+  }
+
+  function galaxyGlow(ctx, r, art, time, heat) {
+    for (let i = 0; i < GALAXY_STARS.length; i += 1) {
+      const star = GALAXY_STARS[i];
+      const twinkle = 0.55 + 0.45 * Math.sin(time * (2 + i * 0.37) + i * 1.7);
+      if (i % 3 === 0) {
+        drawSparkle(ctx, star[0] * r, star[1] * r, star[2] * 3.2 * twinkle * (1 + heat * 0.3) * r, art.star, 1);
+      } else {
+        ctx.save();
+        ctx.globalAlpha *= twinkle;
+        fillCircle(ctx, star[0] * r, star[1] * r, star[2] * r, art.star);
+        ctx.restore();
+      }
+    }
+  }
+
   const PAINTERS = {
     classic: { base: classicBase }, inverted: { base: invertedBase }, watermelon: { base: watermelonBase },
     magma: { base: magmaBase, glow: magmaGlow }, toxic: { base: toxicBase, glow: toxicGlow },
     bloodMoon: { base: bloodMoonBase }, zebra: { base: zebraBase }, earth: { base: earthBase },
     cyberpunk: { base: cyberpunkBase, glow: cyberpunkGlow }, neon: { glow: neonGlow },
     gold: { base: goldBase, glow: goldGlow, worldGlow: true }, ghost: { base: ghostBase, worldUpright: true },
-    matrix: { glow: matrixGlow, worldGlow: true }, sun: { under: sunUnder, base: sunBase }
+    matrix: { glow: matrixGlow, worldGlow: true }, sun: { under: sunUnder, base: sunBase },
+    crystal: { base: crystalBase, glow: crystalGlow, worldGlow: true }, phoenix: { base: phoenixBase },
+    dragon: { base: dragonBase, glow: dragonGlow, worldGlow: true }, storm: { base: stormBase, glow: stormGlow, worldGlow: true },
+    disco: { base: discoBase, glow: discoGlow, worldUpright: true, worldGlow: true },
+    galaxy: { base: galaxyBase, glow: galaxyGlow }
   };
 
   const SKIN_IDS = Object.freeze(Object.keys(PAINTERS));

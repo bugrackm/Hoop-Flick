@@ -67,6 +67,17 @@
   const achievementList = document.getElementById("achievementList");
   const achievementToast = document.getElementById("achievementToast");
   const achievementToastName = document.getElementById("achievementToastName");
+  const achievementToastTitle = document.getElementById("achievementToastTitle");
+  const achievementToastMedal = document.getElementById("achievementToastMedal");
+  const shopDialogOverlay = document.getElementById("shopDialogOverlay");
+  const shopDialogPreview = document.getElementById("shopDialogPreview");
+  const shopDialogTitle = document.getElementById("shopDialogTitle");
+  const shopDialogText = document.getElementById("shopDialogText");
+  const shopDialogDetail = document.getElementById("shopDialogDetail");
+  const shopDialogProgress = document.getElementById("shopDialogProgress");
+  const shopDialogCancelButton = document.getElementById("shopDialogCancelButton");
+  const shopDialogConfirmButton = document.getElementById("shopDialogConfirmButton");
+  const gameOverChallenge = document.getElementById("gameOverChallenge");
 
   const STORAGE_KEY = "hoop-flick-best";
   const DARK_MODE_KEY = "hoop-flick-dark-mode";
@@ -462,6 +473,61 @@
       trailColors: ["#e6e6e6", "#ffffff", "#b3b3b3"],
       gravityModifier: 50,
       shrinkRate: 10
+    },
+    phoenix: {
+      perfectStyle: "starBurst",
+      perfectFlameColors: ["#fff3b0", "#ff8a1f", "#d4213d"],
+      perfectFlameIntensity: 1.18,
+      perfectFlameSize: 24,
+      perfectFlameLifetime: 0.38,
+      perfectFlameShape: "flame",
+      trailColors: ["#ffd23f", "#ff8a1f", "#d4213d"],
+      gravityModifier: -160,
+      shrinkRate: 10
+    },
+    dragon: {
+      perfectStyle: "splash",
+      perfectFlameColors: ["#f2ffb8", "#46e06f", "#0e7a47"],
+      perfectFlameIntensity: 1.15,
+      perfectFlameSize: 23,
+      perfectFlameLifetime: 0.36,
+      perfectFlameShape: "flame",
+      trailColors: ["#46e06f", "#f2ffb8", "#0e7a47"],
+      gravityModifier: -120,
+      shrinkRate: 10
+    },
+    storm: {
+      perfectStyle: "digitalRings",
+      perfectFlameColors: ["#ffffff", "#ffe14d", "#6f5cff"],
+      perfectFlameIntensity: 1.1,
+      perfectFlameSize: 22,
+      perfectFlameLifetime: 0.32,
+      perfectFlameShape: "energy",
+      trailColors: ["#ffe14d", "#ffffff", "#6f5cff"],
+      gravityModifier: 0,
+      shrinkRate: 18
+    },
+    disco: {
+      perfectStyle: "starBurst",
+      perfectFlameColors: ["#ffffff", "#ff4fd8", "#3fd0ff"],
+      perfectFlameIntensity: 1.1,
+      perfectFlameSize: 22,
+      perfectFlameLifetime: 0.34,
+      perfectFlameShape: "energy",
+      trailColors: ["#ff4fd8", "#3fd0ff", "#ffe14d"],
+      gravityModifier: 20,
+      shrinkRate: 14
+    },
+    cosmic: {
+      perfectStyle: "halo",
+      perfectFlameColors: ["#fff0ff", "#ff5fd2", "#6a3cff"],
+      perfectFlameIntensity: 1.12,
+      perfectFlameSize: 23,
+      perfectFlameLifetime: 0.4,
+      perfectFlameShape: "energy",
+      trailColors: ["#ff5fd2", "#fff0ff", "#6a3cff"],
+      gravityModifier: -40,
+      shrinkRate: 8
     }
   };
   const BALL_SKINS = {
@@ -726,8 +792,101 @@
         seam: "transparent",
         outline: "#cc3300"
       }
+    },
+    // Challenge balls: never sold, unlocked only through BALL_CHALLENGES.
+    crystal: {
+      id: "crystal",
+      nameKey: "crystalBall",
+      descriptionKey: "selectSkin",
+      effectPreset: "ice",
+      assetPath: "",
+      art: {
+        id: "crystal", body: "#7fd0f5", shadow: "#3a86c8", rim: "#e8fbff",
+        outline: "#173f66", highlightAlpha: 0.85,
+        facetLight: "#c4efff", facetDark: "#4b9fd8", edge: "#effcff", sparkle: "#ffffff"
+      },
+      colors: { light: "#e8fbff", mid: "#7fd0f5", dark: "#3a86c8", seam: "#effcff", outline: "#173f66" }
+    },
+    phoenix: {
+      id: "phoenix",
+      nameKey: "phoenixBall",
+      descriptionKey: "selectSkin",
+      effectPreset: "phoenix",
+      assetPath: "",
+      art: {
+        id: "phoenix", body: "#c4252f", shadow: "#6e0c22", rim: "#ffd36b",
+        outline: "#36080f", highlightAlpha: 0.5,
+        feather: "#ff7a1f", featherInner: "#ffc53d", featherTip: "#fff1a8"
+      },
+      colors: { light: "#ffd36b", mid: "#ff7a1f", dark: "#c4252f", seam: "#ffc53d", outline: "#36080f" }
+    },
+    dragon: {
+      id: "dragon",
+      nameKey: "dragonBall",
+      descriptionKey: "selectSkin",
+      effectPreset: "dragon",
+      assetPath: "",
+      art: {
+        id: "dragon", body: "#1f9150", shadow: "#0b5530", rim: "#c4ffa8",
+        outline: "#08291a", highlightAlpha: 0.55,
+        scale: "#13703f", scaleEdge: "#62e38c", eye: "#ffd23f", pupil: "#08291a"
+      },
+      colors: { light: "#c4ffa8", mid: "#1f9150", dark: "#0b5530", seam: "#62e38c", outline: "#08291a" }
+    },
+    storm: {
+      id: "storm",
+      nameKey: "stormBall",
+      descriptionKey: "selectSkin",
+      effectPreset: "storm",
+      assetPath: "",
+      noSeams: true,
+      art: {
+        id: "storm", body: "#2b3456", shadow: "#121831", rim: "#93a6ff",
+        rimAlpha: 0.4, outline: "#0b0f22", darkBody: true, highlightAlpha: 0.4,
+        cloud: "#434e7d", cloudLight: "#5d6aa0", bolt: "#ffe14d", boltCore: "#ffffff"
+      },
+      colors: { light: "#ffe14d", mid: "#5d6aa0", dark: "#2b3456", seam: "transparent", outline: "#0b0f22" }
+    },
+    disco: {
+      id: "disco",
+      nameKey: "discoBall",
+      descriptionKey: "selectSkin",
+      effectPreset: "disco",
+      assetPath: "",
+      noSeams: true,
+      art: {
+        id: "disco", body: "#aab4c0", shadow: "#5c6878", rim: "#ffffff",
+        outline: "#262d37", highlightAlpha: 0.75,
+        tileLine: "#68737f", tileLight: "#dde5ee", tileColors: ["#ff4fd8", "#3fd0ff", "#ffe14d", "#7dff6a"],
+        sparkle: "#ffffff"
+      },
+      colors: { light: "#ffffff", mid: "#aab4c0", dark: "#5c6878", seam: "transparent", outline: "#262d37" }
+    },
+    galaxy: {
+      id: "galaxy",
+      nameKey: "galaxyBall",
+      descriptionKey: "selectSkin",
+      effectPreset: "cosmic",
+      assetPath: "",
+      noSeams: true,
+      art: {
+        id: "galaxy", body: "#1c1446", shadow: "#0a0720", rim: "#c58bff",
+        rimAlpha: 0.4, outline: "#07051a", darkBody: true, highlightAlpha: 0.35,
+        nebula: "#5b2fa8", nebulaHot: "#d0459f", core: "#ffe7f7", star: "#fff6d8"
+      },
+      colors: { light: "#ffe7f7", mid: "#5b2fa8", dark: "#1c1446", seam: "transparent", outline: "#07051a" }
     }
   };
+  // Each challenge ball unlocks once getBallChallengeProgress(metric) reaches target.
+  const BALL_CHALLENGES = Object.freeze({
+    crystal: Object.freeze({ metric: "perfectStreak", target: 8, descriptionKey: "challengeCrystal" }),
+    phoenix: Object.freeze({ metric: "runIgnitions", target: 3, descriptionKey: "challengePhoenix" }),
+    dragon: Object.freeze({ metric: "dailyStreak", target: 3, descriptionKey: "challengeDragon" }),
+    storm: Object.freeze({ metric: "bankPerfects", target: 10, descriptionKey: "challengeStorm" }),
+    disco: Object.freeze({ metric: "highScore", target: 300, descriptionKey: "challengeDisco" }),
+    galaxy: Object.freeze({ metric: "lifetimePerfects", target: 150, descriptionKey: "challengeGalaxy" })
+  });
+  const CHALLENGE_SKIN_ORDER = Object.freeze(Object.keys(BALL_CHALLENGES));
   const THEMES = {
     gym: {
       id: "gym",
@@ -1091,7 +1250,7 @@
     Object.freeze({ id: "daily_login_30", groupKey: "achievementGroupDaily", nameKey: "achievementDaily30Name", descriptionKey: "achievementDaily30Description", tier: "gold", metric: "dailyStreak", target: 30, reward: 125 }),
     Object.freeze({ id: "ball_collection_5", groupKey: "achievementGroupCollection", nameKey: "achievementBall5Name", descriptionKey: "achievementBall5Description", tier: "bronze", metric: "ballCollection", target: 5, reward: 25 }),
     Object.freeze({ id: "ball_collection_10", groupKey: "achievementGroupCollection", nameKey: "achievementBall10Name", descriptionKey: "achievementBall10Description", tier: "silver", metric: "ballCollection", target: 10, reward: 60 }),
-    Object.freeze({ id: "ball_collection_all", groupKey: "achievementGroupCollection", nameKey: "achievementBallAllName", descriptionKey: "achievementBallAllDescription", tier: "gold", metric: "ballCollection", target: Object.keys(BALL_SKINS).length, reward: 125 }),
+    Object.freeze({ id: "ball_collection_all", groupKey: "achievementGroupCollection", nameKey: "achievementBallAllName", descriptionKey: "achievementBallAllDescription", tier: "gold", metric: "shopBallCollection", target: BALL_SKIN_DISPLAY_ORDER.length, reward: 125 }),
     Object.freeze({ id: "double_bounce_basket", groupKey: "achievementGroupSpecial", nameKey: "achievementDoubleBounceName", descriptionKey: "achievementDoubleBounceDescription", tier: "special", metric: "unlocked", target: 1, reward: 50 }),
     Object.freeze({ id: "theme_collection_all", groupKey: "achievementGroupSpecial", nameKey: "achievementThemeAllName", descriptionKey: "achievementThemeAllDescription", tier: "special", metric: "themeCollection", target: Object.keys(THEMES).length, reward: 100 }),
     Object.freeze({ id: "first_shot_bounce", groupKey: "achievementGroupSpecial", nameKey: "achievementFirstBounceName", descriptionKey: "achievementFirstBounceDescription", tier: "special", metric: "unlocked", target: 1, reward: 25 }),
@@ -1183,7 +1342,7 @@
       achievementBall10Name: "Top Bende",
       achievementBall10Description: "En az 10 top görünümüne sahip ol.",
       achievementBallAllName: "Tam Kadro",
-      achievementBallAllDescription: "Koleksiyondaki bütün top görünümlerine sahip ol.",
+      achievementBallAllDescription: "Mağazadaki bütün toplara sahip ol.",
       achievementDoubleBounceName: "Çifte Sek",
       achievementDoubleBounceDescription: "Tek atışta iki gerçek bounce yapıp basket at.",
       achievementThemeAllName: "Good Look",
@@ -1227,6 +1386,30 @@
       bloodMoonBall: "Kanlı Ay",
       zebraBall: "Zebra",
       sunBall: "Güneş",
+      crystalBall: "Buz Kristali",
+      phoenixBall: "Anka",
+      dragonBall: "Ejderha",
+      stormBall: "Fırtına",
+      discoBall: "Disko",
+      galaxyBall: "Galaksi",
+      shopBalls: "Mağaza Topları",
+      challengeBalls: "Görev Topları",
+      challengeBallsHint: "Satılmaz; yalnızca görevle açılır.",
+      challengeCrystal: "Üst üste 8 deliksiz atış yap",
+      challengePhoenix: "Tek oyunda alevi 3 kez yak",
+      challengeDragon: "3 gün üst üste oyna",
+      challengeStorm: "Duvardan sekip 10 deliksiz atış yap",
+      challengeDisco: "Tek oyunda 300 puana ulaş",
+      challengeGalaxy: "Toplam 150 deliksiz atış yap",
+      challengeLocked: "Görev topu",
+      challengeProgress: "İlerleme",
+      newBallUnlocked: "Yeni top açıldı",
+      nextChallengeBall: "Sıradaki görev topu",
+      confirmPurchase: "{price} coin karşılığında satın almak istiyor musun?",
+      balanceAfterPurchase: "Satın aldıktan sonra kalan: {coins} coin",
+      buy: "Satın Al",
+      cancel: "Vazgeç",
+      ok: "Tamam",
       selectedSkin: "Seçili top",
       selectSkin: "Seç",
       comingSoon: "Yakında",
@@ -1334,7 +1517,7 @@
       achievementBall10Name: "Ballin’",
       achievementBall10Description: "Own at least 10 ball styles.",
       achievementBallAllName: "Full Rack",
-      achievementBallAllDescription: "Own every ball style in the collection.",
+      achievementBallAllDescription: "Own every ball in the shop.",
       achievementDoubleBounceName: "Double Trouble",
       achievementDoubleBounceDescription: "Make a basket after two genuine bounces in one shot.",
       achievementThemeAllName: "Good Look",
@@ -1378,6 +1561,30 @@
       bloodMoonBall: "Blood Moon",
       zebraBall: "Zebra",
       sunBall: "Sun",
+      crystalBall: "Ice Crystal",
+      phoenixBall: "Phoenix",
+      dragonBall: "Dragon",
+      stormBall: "Storm",
+      discoBall: "Disco",
+      galaxyBall: "Galaxy",
+      shopBalls: "Shop Balls",
+      challengeBalls: "Challenge Balls",
+      challengeBallsHint: "Not for sale; unlocked only by challenges.",
+      challengeCrystal: "Make 8 swishes in a row",
+      challengePhoenix: "Light the flame 3 times in one run",
+      challengeDragon: "Play 3 days in a row",
+      challengeStorm: "Make 10 bank-shot swishes",
+      challengeDisco: "Score 300 in one run",
+      challengeGalaxy: "Make 150 swishes in total",
+      challengeLocked: "Challenge ball",
+      challengeProgress: "Progress",
+      newBallUnlocked: "New ball unlocked",
+      nextChallengeBall: "Next challenge ball",
+      confirmPurchase: "Buy it for {price} coins?",
+      balanceAfterPurchase: "Coins left after buying: {coins}",
+      buy: "Buy",
+      cancel: "Cancel",
+      ok: "OK",
       selectedSkin: "Selected ball",
       selectSkin: "Select",
       comingSoon: "Coming Soon",
@@ -1459,7 +1666,9 @@
   let activePlaySegmentStartedAt = null;
   let runShotCount = 0;
   let runBounceBaskets = 0;
+  let runIgnitions = 0;
   let achievementToastQueue = [];
+  let achievementToastEntry = null;
   let achievementToastTimer = null;
   let score = 0;
   let best = readBestScore();
@@ -1561,6 +1770,7 @@
   const streakHudState = { chain: -1, preset: "", dark: null };
   let lastBallHeatColors = BALL_EFFECT_PRESETS.classic.perfectFlameColors;
   const ballPreviewAnimation = { frameId: null, startedAt: 0 };
+  const shopDialog = { open: false, onConfirm: null, ballSkin: null, canvas: null, returnFocus: null };
   const glowSprites = new Map();
   const flameStyles = new Map();
   const flameStyleKeys = new WeakMap();
@@ -1643,6 +1853,7 @@
     }
     const activeTimeChanged = state === "playing" ? stopActivePlayClock() : false;
     if (state === "customize" && nextState !== "customize") stopBallPreviewAnimation();
+    closeShopDialog();
     state = nextState;
     resetPhysicsClock();
     startActivePlayClock();
@@ -1656,6 +1867,7 @@
     score = 0;
     runShotCount = 0;
     runBounceBaskets = 0;
+    runIgnitions = 0;
     runStartBestScore = best;
     highScoreCelebration.eligibleThisRun = runStartBestScore > 0;
     highScoreCelebration.hasCelebratedThisRun = false;
@@ -1843,12 +2055,51 @@
     void flushSave();
     bestValue.textContent = String(best);
     finalScore.textContent = t("score") + " " + score;
+    renderGameOverChallenge();
     retryOverlay.classList.remove("active");
     gameOverOverlay.classList.add("active");
     syncUiState();
     playGameSound("gameover");
     triggerHaptic([40, 60, 70], true);
     return true;
+  }
+
+  // Game over points at the locked challenge ball closest to done: a reason for one more run.
+  function getNextBallChallengeId() {
+    let nextId = null;
+    let nextRatio = -1;
+    for (const skinId of CHALLENGE_SKIN_ORDER) {
+      if (ownedBallSkins.has(skinId)) continue;
+      const challenge = BALL_CHALLENGES[skinId];
+      const ratio = Math.min(1, getBallChallengeProgress(challenge) / challenge.target);
+      if (ratio > nextRatio) {
+        nextId = skinId;
+        nextRatio = ratio;
+      }
+    }
+    return nextId;
+  }
+
+  function renderGameOverChallenge() {
+    if (!gameOverChallenge) return;
+    const skinId = getNextBallChallengeId();
+    gameOverChallenge.hidden = !skinId;
+    if (!skinId) {
+      gameOverChallenge.replaceChildren();
+      return;
+    }
+    const skin = BALL_SKINS[skinId];
+    const challenge = BALL_CHALLENGES[skinId];
+    const preview = createBallPreviewElement("", skin);
+    const copy = document.createElement("span");
+    copy.className = "gameOverChallengeCopy";
+    const label = document.createElement("small");
+    label.textContent = t("nextChallengeBall") + " · " + t(skin.nameKey);
+    const task = document.createElement("strong");
+    task.textContent = t(challenge.descriptionKey);
+    copy.append(label, task, createChallengeProgress(challenge));
+    gameOverChallenge.replaceChildren(preview, copy);
+    drawBallPreviewCanvas(preview, skin, { rotation: -0.35, time: 0, heat: 0, flash: 0 });
   }
 
   function recoverFirstTransition() {
@@ -3576,8 +3827,9 @@
     lastWasPerfect = wasPerfect;
     lastWasBounce = usedWall;
     score += lastScoreGain;
+    const ignited = wasPerfect && swishStreak === getFlameThreshold();
     recordBasketStats(wasPerfect, usedWall, lastScoreGain);
-    const achievementUnlocked = recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot);
+    const achievementUnlocked = recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot, ignited);
     if (achievementUnlocked) requestSave(true);
     else requestSave(false);
     if (
@@ -3597,7 +3849,7 @@
       ? SCORE_SHAKE.perfect + Math.min(swishStreak, 6) * SCORE_SHAKE.perStreak
       : SCORE_SHAKE.basket;
     shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
-    if (wasPerfect) hitStopTimer = swishStreak === getFlameThreshold() ? HIT_STOP.ignite : HIT_STOP.perfect;
+    if (wasPerfect) hitStopTimer = ignited ? HIT_STOP.ignite : HIT_STOP.perfect;
     comboText = usedWall || wasPerfect ? 1.5 : 1.0;
     scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain);
     playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak });
@@ -4839,6 +5091,10 @@
       playNoise(0.05, 0.024, "lowpass", 900, 300, 0.7);
       playTone(523, 0.1, "sine", 0.016, 0.06, 528);
       playTone(659, 0.13, "sine", 0.015, 0.11, 664);
+    } else if (name === "purchase") {
+      // Coin chime: a soft tap, then a quick rising marimba run.
+      playTone(220, 0.06, "triangle", 0.02, 0, 160);
+      [1, 1.26, 1.5, 2].forEach((ratio, i) => playMallet(784 * ratio, 0.02 + i * 0.055, i === 3 ? 0.032 : 0.024));
     } else if (name === "gameover") {
       playTone(165, 0.24, "triangle", 0.036, 0, 82);
       playNoise(0.16, 0.05, "lowpass", 700, 150, 0.7);
@@ -4958,7 +5214,9 @@
       runBounceBest: 0,
       lifetimeBounceBaskets: 0,
       dailyStreak: 0,
-      lastLoginDay: ""
+      lastLoginDay: "",
+      runIgnitionsBest: 0,
+      bankPerfectBaskets: 0
     };
   }
 
@@ -4988,7 +5246,9 @@
       runBounceBest: normalizeStatValue(source.runBounceBest),
       lifetimeBounceBaskets: normalizeStatValue(source.lifetimeBounceBaskets),
       dailyStreak: normalizeStatValue(source.dailyStreak),
-      lastLoginDay: normalizeLoginDay(source.lastLoginDay)
+      lastLoginDay: normalizeLoginDay(source.lastLoginDay),
+      runIgnitionsBest: normalizeStatValue(source.runIgnitionsBest),
+      bankPerfectBaskets: normalizeStatValue(source.bankPerfectBaskets)
     };
   }
 
@@ -5013,6 +5273,8 @@
     if (achievement.metric === "lifetimeBounce") return achievementState.lifetimeBounceBaskets;
     if (achievement.metric === "dailyStreak") return achievementState.dailyStreak;
     if (achievement.metric === "ballCollection") return ownedBallSkins.size;
+    // Challenge balls count toward 5/10 but not toward owning the whole shop.
+    if (achievement.metric === "shopBallCollection") return BALL_SKIN_DISPLAY_ORDER.filter((id) => ownedBallSkins.has(id)).length;
     if (achievement.metric === "themeCollection") return ownedThemes.size;
     return achievementState.unlockedIds.includes(achievement.id) ? 1 : 0;
   }
@@ -5068,6 +5330,7 @@
       : 1;
     achievementState.lastLoginDay = today;
     evaluateAchievements({ metrics: ["dailyStreak"], persist: false });
+    evaluateBallChallenges(true);
     syncAchievementUi();
     requestSave(true);
     return true;
@@ -5079,9 +5342,16 @@
     if (usedWall) stats.bounceBaskets = addSafeStat(stats.bounceBaskets, 1);
   }
 
-  function recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot) {
+  function recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot, ignited) {
     if (wasPerfect) {
       achievementState.perfectStreakBest = Math.max(achievementState.perfectStreakBest, swishStreak);
+    }
+    if (ignited) {
+      runIgnitions = addSafeStat(runIgnitions, 1);
+      achievementState.runIgnitionsBest = Math.max(achievementState.runIgnitionsBest, runIgnitions);
+    }
+    if (wasPerfect && usedWall) {
+      achievementState.bankPerfectBaskets = addSafeStat(achievementState.bankPerfectBaskets, 1);
     }
     if (usedWall) {
       runBounceBaskets = addSafeStat(runBounceBaskets, 1);
@@ -5101,8 +5371,35 @@
     if (wasLastSecondTimedShot) {
       unlocked = unlockAchievement("last_second_timed_basket", true) || unlocked;
     }
+    unlocked = evaluateBallChallenges(true) || unlocked;
     if (unlocked) syncAchievementUi();
     return unlocked;
+  }
+
+  function getBallChallengeProgress(challenge) {
+    if (challenge.metric === "perfectStreak") return achievementState.perfectStreakBest;
+    if (challenge.metric === "runIgnitions") return achievementState.runIgnitionsBest;
+    if (challenge.metric === "dailyStreak") return achievementState.dailyStreak;
+    if (challenge.metric === "bankPerfects") return achievementState.bankPerfectBaskets;
+    if (challenge.metric === "highScore") return Math.max(best, score);
+    if (challenge.metric === "lifetimePerfects") return normalizeStatValue(stats.perfectBaskets);
+    return 0;
+  }
+
+  // Grants every challenge ball whose target is met; the caller decides when to save.
+  function evaluateBallChallenges(announce) {
+    let changed = false;
+    for (const skinId of CHALLENGE_SKIN_ORDER) {
+      const challenge = BALL_CHALLENGES[skinId];
+      if (ownedBallSkins.has(skinId) || getBallChallengeProgress(challenge) < challenge.target) continue;
+      ownedBallSkins.add(skinId);
+      changed = true;
+      if (announce !== false) queueBallUnlockToast(skinId);
+    }
+    if (!changed) return false;
+    evaluateAchievements({ metrics: ["ballCollection", "shopBallCollection"], announce, persist: false });
+    if (state === "customize") renderBallCustomizer();
+    return true;
   }
 
   function normalizeCoins(value) {
@@ -5551,21 +5848,47 @@
     return true;
   }
 
+  function syncAchievementToastText() {
+    const entry = achievementToastEntry;
+    if (!entry) return;
+    const item = entry.kind === "ball" ? BALL_SKINS[entry.id] : ACHIEVEMENT_BY_ID[entry.id];
+    if (!item) return;
+    if (achievementToastTitle) achievementToastTitle.textContent = t(entry.kind === "ball" ? "newBallUnlocked" : "achievementUnlocked");
+    achievementToastName.textContent = t(item.nameKey);
+  }
+
   function queueAchievementToast(achievement) {
     if (!achievement) return;
-    achievementToastQueue.push(achievement.id);
+    achievementToastQueue.push({ kind: "achievement", id: achievement.id });
+    showNextAchievementToast();
+  }
+
+  function queueBallUnlockToast(skinId) {
+    if (!BALL_SKINS[skinId]) return;
+    achievementToastQueue.push({ kind: "ball", id: skinId });
     showNextAchievementToast();
   }
 
   function showNextAchievementToast() {
     if (!gameBooted || achievementToastTimer !== null || achievementToastQueue.length === 0) return;
-    const achievementId = achievementToastQueue.shift();
-    const achievement = ACHIEVEMENT_BY_ID[achievementId];
-    if (!achievement) {
+    const entry = achievementToastQueue.shift();
+    const item = entry.kind === "ball" ? BALL_SKINS[entry.id] : ACHIEVEMENT_BY_ID[entry.id];
+    if (!item) {
       showNextAchievementToast();
       return;
     }
-    achievementToastName.textContent = t(achievement.nameKey);
+    achievementToastEntry = entry;
+    syncAchievementToastText();
+    if (achievementToastMedal) {
+      achievementToastMedal.classList.toggle("ballMedal", entry.kind === "ball");
+      if (entry.kind === "ball") {
+        const preview = createBallPreviewElement("toast", item);
+        achievementToastMedal.replaceChildren(preview);
+        drawBallPreviewCanvas(preview, item, { rotation: -0.35, time: 0, heat: 0, flash: 0 });
+      } else {
+        achievementToastMedal.textContent = "★";
+      }
+    }
     achievementToast.classList.add("active");
     achievementToastTimer = window.setTimeout(() => {
       achievementToast.classList.remove("active");
@@ -5605,9 +5928,13 @@
       element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
     }
     writeLanguagePreference(language);
-    if (state === "gameover") finalScore.textContent = t("score") + " " + score;
+    if (state === "gameover") {
+      finalScore.textContent = t("score") + " " + score;
+      renderGameOverChallenge();
+    }
     clearEconomyStatus("ball");
     clearEconomyStatus("theme");
+    syncAchievementToastText();
     renderProfile();
     renderAchievements();
     syncEconomyBalances();
@@ -5706,7 +6033,7 @@
     const surface = sizeBallPreviewCanvas(canvasElement, large);
     const previewCtx = surface.ctx;
     // The held flame reaches ~1.9 r below the centre and ~3 r above it; leave room for both.
-    const radius = large ? Math.min(surface.width, surface.height) * 0.17 : 20;
+    const radius = Math.min(surface.width, surface.height) * (large ? 0.17 : 0.42);
     const centerX = surface.width * 0.5;
     const centerY = large ? surface.height * 0.68 : surface.height * 0.5;
     previewCtx.clearRect(0, 0, surface.width, surface.height);
@@ -5744,27 +6071,27 @@
     previewCtx.restore();
   }
 
-  function drawAnimatedBallPreview(now) {
-    const canvasElement = customizeBallPreview?.querySelector("canvas.ballPreviewCanvas.large");
-    if (!canvasElement || state !== "customize") return;
-    const skin = getSelectedBallSkin();
-    if (reduceMotion) {
-      drawBallPreviewCanvas(canvasElement, skin, { rotation: -0.35, time: 2, heat: 1, flash: 0, ring: 0 });
-      return;
-    }
+  function getBallPreviewFrame(now) {
+    if (reduceMotion) return { rotation: -0.35, time: 2, heat: 1, flash: 0, ring: 0 };
     const elapsed = Math.max(0, (now - ballPreviewAnimation.startedAt) / 1000);
     const cycle = elapsed % 4;
     const ignitionAge = cycle - 1.6;
-    const heat = ignitionAge <= 0 ? 0 : clamp(ignitionAge / 0.12, 0, 1);
-    const flash = ignitionAge > 0 && ignitionAge < 0.18 ? 1 - ignitionAge / 0.18 : 0;
-    const ring = ignitionAge > 0 && ignitionAge < 0.42 ? ignitionAge / 0.42 : 0;
-    drawBallPreviewCanvas(canvasElement, skin, {
+    return {
       rotation: -0.35 + elapsed * 0.8,
       time: elapsed,
-      heat,
-      flash,
-      ring
-    });
+      heat: ignitionAge <= 0 ? 0 : clamp(ignitionAge / 0.12, 0, 1),
+      flash: ignitionAge > 0 && ignitionAge < 0.18 ? 1 - ignitionAge / 0.18 : 0,
+      ring: ignitionAge > 0 && ignitionAge < 0.42 ? ignitionAge / 0.42 : 0
+    };
+  }
+
+  // The customize preview and an open shop dialog's ball share one animation clock.
+  function drawAnimatedBallPreview(now) {
+    if (state !== "customize") return;
+    const frame = getBallPreviewFrame(now);
+    const canvasElement = customizeBallPreview?.querySelector("canvas.ballPreviewCanvas.large");
+    if (canvasElement) drawBallPreviewCanvas(canvasElement, getSelectedBallSkin(), frame);
+    if (shopDialog.ballSkin && shopDialog.canvas) drawBallPreviewCanvas(shopDialog.canvas, shopDialog.ballSkin, frame);
   }
 
   function stopBallPreviewAnimation() {
@@ -5797,41 +6124,95 @@
     const selectedSkin = getSelectedBallSkin();
     customizeBallPreview.replaceChildren(createBallPreviewElement("large"));
     customizeBallName.textContent = t(selectedSkin.nameKey);
-    ballSkinList.replaceChildren();
-
-    for (const skinId of BALL_SKIN_DISPLAY_ORDER) {
-      const skin = BALL_SKINS[skinId];
-      if (!skin) continue;
-      const option = document.createElement("button");
-      const isSelected = skin.id === selectedBallSkinId;
-      const isOwned = ownedBallSkins.has(skin.id);
-      const price = ECONOMY_PRICES.ball[skin.id] ?? 0;
-      const stateLabel = isSelected ? t("selectedSkin") : getCosmeticStateLabel(false, isOwned, price);
-      option.type = "button";
-      option.className = "ballSkinOption" + (isOwned ? "" : " locked");
-      option.setAttribute("role", "option");
-      option.setAttribute("aria-selected", String(isSelected));
-      option.setAttribute("aria-label", t(skin.nameKey) + ", " + stateLabel);
-      option.appendChild(createBallPreviewElement("", skin));
-
-      const copy = document.createElement("span");
-      const name = document.createElement("strong");
-      const description = document.createElement("small");
-      name.textContent = t(skin.nameKey);
-      description.textContent = stateLabel;
-      copy.append(name, description);
-      option.appendChild(copy);
-
-      const check = document.createElement("span");
-      check.className = "ballSkinCheck" + (isOwned ? "" : " locked");
-      check.setAttribute("aria-hidden", "true");
-      check.textContent = isSelected ? "✓" : "";
-      option.appendChild(check);
-      option.addEventListener("click", () => selectBallSkin(skin.id));
-      ballSkinList.appendChild(option);
-    }
+    ballSkinList.replaceChildren(
+      createSkinSectionLabel(t("shopBalls")),
+      ...BALL_SKIN_DISPLAY_ORDER.filter((id) => BALL_SKINS[id]).map(createBallSkinOption),
+      createSkinSectionLabel(t("challengeBalls"), t("challengeBallsHint")),
+      ...CHALLENGE_SKIN_ORDER.filter((id) => BALL_SKINS[id]).map(createBallSkinOption)
+    );
     // The large canvas was just replaced; without a loop (reduced motion) nothing else draws it.
     if (state === "customize") drawAnimatedBallPreview(performance.now());
+  }
+
+  function createSkinSectionLabel(title, hint) {
+    const label = document.createElement("div");
+    label.className = "ballSkinSection";
+    // Decorative inside the listbox; every option's own label already names its section's rule.
+    label.setAttribute("aria-hidden", "true");
+    const heading = document.createElement("strong");
+    heading.textContent = title;
+    label.appendChild(heading);
+    if (hint) {
+      const note = document.createElement("small");
+      note.textContent = hint;
+      label.appendChild(note);
+    }
+    return label;
+  }
+
+  function createChallengeProgress(challenge) {
+    const value = Math.min(getBallChallengeProgress(challenge), challenge.target);
+    const progress = document.createElement("span");
+    progress.className = "challengeProgress";
+    progress.style.setProperty("--progress", String(value / challenge.target));
+    const bar = document.createElement("span");
+    bar.className = "challengeProgressBar";
+    bar.setAttribute("aria-hidden", "true");
+    const count = document.createElement("span");
+    count.className = "challengeProgressCount";
+    count.textContent = value + " / " + challenge.target;
+    progress.append(bar, count);
+    return progress;
+  }
+
+  function createBallSkinOption(skinId) {
+    const skin = BALL_SKINS[skinId];
+    const challenge = BALL_CHALLENGES[skinId];
+    const option = document.createElement("button");
+    const isSelected = skin.id === selectedBallSkinId;
+    const isOwned = ownedBallSkins.has(skin.id);
+    const lockedChallenge = Boolean(challenge) && !isOwned;
+    let stateLabel = getCosmeticStateLabel(isSelected, isOwned, ECONOMY_PRICES.ball[skin.id] ?? 0);
+    if (lockedChallenge) stateLabel = t(challenge.descriptionKey);
+    option.type = "button";
+    option.className = "ballSkinOption" + (isOwned ? "" : " locked") + (challenge ? " challenge" : "");
+    option.dataset.skinId = skin.id;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(isSelected));
+    const progressLabel = lockedChallenge
+      ? ", " + t("challengeProgress") + " " + Math.min(getBallChallengeProgress(challenge), challenge.target) + " / " + challenge.target
+      : "";
+    option.setAttribute("aria-label", t(skin.nameKey) + ", " + stateLabel + progressLabel);
+    option.appendChild(createBallPreviewElement("", skin));
+
+    const copy = document.createElement("span");
+    const name = document.createElement("strong");
+    const description = document.createElement("small");
+    name.textContent = t(skin.nameKey);
+    description.textContent = stateLabel;
+    copy.append(name, description);
+    if (lockedChallenge) copy.appendChild(createChallengeProgress(challenge));
+    option.appendChild(copy);
+
+    const check = document.createElement("span");
+    check.className = "ballSkinCheck" + (isOwned ? "" : " locked");
+    check.setAttribute("aria-hidden", "true");
+    check.textContent = isSelected ? "✓" : "";
+    option.appendChild(check);
+    option.addEventListener("click", () => selectBallSkin(skin.id));
+    return option;
+  }
+
+  function createThemeSwatch(theme, extraClass) {
+    const colors = darkMode ? theme.colors.dark : theme.colors.light;
+    const swatch = document.createElement("span");
+    swatch.className = "themeSwatch" + (extraClass ? " " + extraClass : "");
+    swatch.setAttribute("aria-hidden", "true");
+    swatch.style.setProperty("--theme-bg-top", colors.backgroundTop);
+    swatch.style.setProperty("--theme-bg-bottom", colors.backgroundBottom);
+    swatch.style.setProperty("--theme-rim", colors.rim);
+    swatch.style.setProperty("--theme-wall", colors.wallEdge);
+    return swatch;
   }
 
   function renderThemeCustomizer() {
@@ -5847,20 +6228,12 @@
       const isOwned = ownedThemes.has(theme.id);
       const price = ECONOMY_PRICES.theme[theme.id] ?? 0;
       const stateLabel = isSelected ? t("selectedTheme") : getCosmeticStateLabel(false, isOwned, price);
-      const colors = darkMode ? theme.colors.dark : theme.colors.light;
       option.type = "button";
       option.className = "themeOption" + (isOwned ? "" : " locked");
+      option.dataset.themeId = theme.id;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", String(isSelected));
       option.setAttribute("aria-label", t(theme.nameKey) + ", " + stateLabel);
-      option.style.setProperty("--theme-bg-top", colors.backgroundTop);
-      option.style.setProperty("--theme-bg-bottom", colors.backgroundBottom);
-      option.style.setProperty("--theme-rim", colors.rim);
-      option.style.setProperty("--theme-wall", colors.wallEdge);
-
-      const swatch = document.createElement("span");
-      swatch.className = "themeSwatch";
-      swatch.setAttribute("aria-hidden", "true");
 
       const copy = document.createElement("span");
       const name = document.createElement("strong");
@@ -5873,65 +6246,185 @@
       check.className = "ballSkinCheck" + (isOwned ? "" : " locked");
       check.setAttribute("aria-hidden", "true");
       check.textContent = isSelected ? "✓" : "";
-      option.append(swatch, copy, check);
+      option.append(createThemeSwatch(theme), copy, check);
       option.addEventListener("click", () => selectTheme(theme.id));
       themeList.appendChild(option);
     }
   }
 
-  function selectBallSkin(skinId) {
-    if (!BALL_SKINS[skinId]) return;
-    const price = ECONOMY_PRICES.ball[skinId] ?? 0;
-    const isOwned = ownedBallSkins.has(skinId);
-    let achievementUnlocked = false;
-    if (!isOwned && coins < price) {
-      showEconomyStatus("ball", t("insufficientCoins") + " · " + price + " " + t("coins"));
-      ensureAudio();
-      playGameSound("button");
-      return;
+  // One modal for buying (ball or theme) and for reading a challenge ball's task.
+  function openShopDialog(options) {
+    if (!shopDialogOverlay) return;
+    shopDialog.open = true;
+    shopDialog.onConfirm = options.onConfirm || null;
+    shopDialog.returnFocus = options.returnFocus || null;
+    for (const overlay of [customizeOverlay, themeOverlay]) if (overlay) overlay.inert = true;
+    shopDialog.ballSkin = options.ballSkin || null;
+    shopDialog.canvas = null;
+    if (options.ballSkin) {
+      const canvasElement = document.createElement("canvas");
+      canvasElement.className = "ballPreviewCanvas large shopDialogBall";
+      canvasElement.setAttribute("aria-hidden", "true");
+      shopDialog.canvas = canvasElement;
+      shopDialogPreview.replaceChildren(canvasElement);
+    } else {
+      shopDialogPreview.replaceChildren(createThemeSwatch(options.theme, "large"));
     }
-    if (!isOwned) {
-      coins -= price;
-      ownedBallSkins.add(skinId);
-      achievementUnlocked = evaluateAchievements({ metrics: ["ballCollection"], persist: false });
-    }
-    selectedBallSkinId = skinId;
-    ballEffects.selectedPreset = BALL_SKINS[skinId].effectPreset;
-    writeBallSkinPreference(skinId, !isOwned);
-    if (achievementUnlocked) requestSave(true);
-    syncEconomyBalances();
-    renderBallCustomizer();
-    if (!isOwned) showEconomyStatus("ball", t("purchased") + ": " + t(BALL_SKINS[skinId].nameKey));
+    shopDialogTitle.textContent = options.title;
+    shopDialogText.textContent = options.text;
+    shopDialogDetail.textContent = options.detail || "";
+    shopDialogDetail.hidden = !options.detail;
+    if (options.challenge) shopDialogProgress.replaceChildren(createChallengeProgress(options.challenge));
+    else shopDialogProgress.replaceChildren();
+    shopDialogProgress.hidden = !options.challenge;
+    shopDialogCancelButton.hidden = !options.onConfirm;
+    shopDialogConfirmButton.textContent = options.confirmLabel || t("ok");
+    shopDialogOverlay.inert = false;
+    shopDialogOverlay.setAttribute("aria-hidden", "false");
+    shopDialogOverlay.classList.add("active");
+    (options.onConfirm ? shopDialogCancelButton : shopDialogConfirmButton).focus({ preventScroll: true });
+    if (shopDialog.ballSkin) drawAnimatedBallPreview(performance.now());
+  }
+
+  function closeShopDialog() {
+    if (!shopDialog.open) return;
+    shopDialog.open = false;
+    shopDialog.onConfirm = null;
+    shopDialog.ballSkin = null;
+    shopDialog.canvas = null;
+    for (const overlay of [customizeOverlay, themeOverlay]) if (overlay) overlay.inert = false;
+    if (!shopDialogOverlay) return;
+    shopDialogOverlay.classList.remove("active");
+    shopDialogOverlay.setAttribute("aria-hidden", "true");
+    shopDialogOverlay.inert = true;
+  }
+
+  // Lists are rebuilt after a purchase, so focus goes back to the row by id, not by element.
+  function restoreShopFocus(selector) {
+    if (!selector) return;
+    const target = document.querySelector(selector);
+    if (target) target.focus({ preventScroll: true });
+  }
+
+  function confirmShopDialog() {
+    const action = shopDialog.onConfirm;
+    const returnFocus = shopDialog.returnFocus;
+    closeShopDialog();
+    ensureAudio();
+    if (action) action();
+    else playGameSound("button");
+    restoreShopFocus(returnFocus);
+  }
+
+  function cancelShopDialog() {
+    const returnFocus = shopDialog.returnFocus;
+    closeShopDialog();
     ensureAudio();
     playGameSound("button");
+    restoreShopFocus(returnFocus);
+  }
+
+  function formatPurchaseCopy(price) {
+    return {
+      text: t("confirmPurchase").replace("{price}", String(price)),
+      detail: t("balanceAfterPurchase").replace("{coins}", String(normalizeCoins(coins) - price))
+    };
+  }
+
+  function selectBallSkin(skinId) {
+    const skin = BALL_SKINS[skinId];
+    if (!skin) return;
+    ensureAudio();
+    playGameSound("button");
+    if (ownedBallSkins.has(skinId)) {
+      applyBallSkin(skinId, false);
+      return;
+    }
+    const challenge = BALL_CHALLENGES[skinId];
+    if (challenge) {
+      openShopDialog({ ballSkin: skin, title: t(skin.nameKey), text: t(challenge.descriptionKey), challenge, returnFocus: `[data-skin-id="${skinId}"]` });
+      return;
+    }
+    const price = ECONOMY_PRICES.ball[skinId] ?? 0;
+    if (coins < price) {
+      showEconomyStatus("ball", t("insufficientCoins") + " · " + price + " " + t("coins"));
+      return;
+    }
+    openShopDialog({
+      ballSkin: skin,
+      title: t(skin.nameKey),
+      ...formatPurchaseCopy(price),
+      confirmLabel: t("buy"),
+      onConfirm: () => buyBallSkin(skinId),
+      returnFocus: `[data-skin-id="${skinId}"]`
+    });
+  }
+
+  function buyBallSkin(skinId) {
+    const price = ECONOMY_PRICES.ball[skinId];
+    if (!BALL_SKINS[skinId] || BALL_CHALLENGES[skinId] || ownedBallSkins.has(skinId)) return false;
+    if (!Number.isSafeInteger(price) || coins < price) return false;
+    coins -= price;
+    ownedBallSkins.add(skinId);
+    evaluateAchievements({ metrics: ["ballCollection", "shopBallCollection"], persist: false });
+    applyBallSkin(skinId, true);
+    showEconomyStatus("ball", t("purchased") + ": " + t(BALL_SKINS[skinId].nameKey));
+    playGameSound("purchase");
+    return true;
+  }
+
+  function applyBallSkin(skinId, saveNow) {
+    selectedBallSkinId = skinId;
+    ballEffects.selectedPreset = BALL_SKINS[skinId].effectPreset;
+    writeBallSkinPreference(skinId, saveNow);
+    syncEconomyBalances();
+    renderBallCustomizer();
   }
 
   function selectTheme(themeId) {
-    if (!THEMES[themeId]) return;
-    const price = ECONOMY_PRICES.theme[themeId] ?? 0;
-    const isOwned = ownedThemes.has(themeId);
-    let achievementUnlocked = false;
-    if (!isOwned && coins < price) {
-      showEconomyStatus("theme", t("insufficientCoins") + " · " + price + " " + t("coins"));
-      ensureAudio();
-      playGameSound("button");
-      return;
-    }
-    if (!isOwned) {
-      coins -= price;
-      ownedThemes.add(themeId);
-      achievementUnlocked = evaluateAchievements({ metrics: ["themeCollection"], persist: false });
-    }
-    selectedThemeId = themeId;
-    preloadHoopSpriteSet();
-    writeThemePreference(themeId, !isOwned);
-    if (achievementUnlocked) requestSave(true);
-    syncEconomyBalances();
-    renderThemeCustomizer();
-    if (!isOwned) showEconomyStatus("theme", t("purchased") + ": " + t(THEMES[themeId].nameKey));
-    draw();
+    const theme = THEMES[themeId];
+    if (!theme) return;
     ensureAudio();
     playGameSound("button");
+    if (ownedThemes.has(themeId)) {
+      applyTheme(themeId, false);
+      return;
+    }
+    const price = ECONOMY_PRICES.theme[themeId] ?? 0;
+    if (coins < price) {
+      showEconomyStatus("theme", t("insufficientCoins") + " · " + price + " " + t("coins"));
+      return;
+    }
+    openShopDialog({
+      theme,
+      title: t(theme.nameKey),
+      ...formatPurchaseCopy(price),
+      confirmLabel: t("buy"),
+      onConfirm: () => buyTheme(themeId),
+      returnFocus: `[data-theme-id="${themeId}"]`
+    });
+  }
+
+  function buyTheme(themeId) {
+    const price = ECONOMY_PRICES.theme[themeId];
+    if (!THEMES[themeId] || ownedThemes.has(themeId)) return false;
+    if (!Number.isSafeInteger(price) || coins < price) return false;
+    coins -= price;
+    ownedThemes.add(themeId);
+    evaluateAchievements({ metrics: ["themeCollection"], persist: false });
+    applyTheme(themeId, true);
+    showEconomyStatus("theme", t("purchased") + ": " + t(THEMES[themeId].nameKey));
+    playGameSound("purchase");
+    return true;
+  }
+
+  function applyTheme(themeId, saveNow) {
+    selectedThemeId = themeId;
+    preloadHoopSpriteSet();
+    writeThemePreference(themeId, saveNow);
+    syncEconomyBalances();
+    renderThemeCustomizer();
+    draw();
   }
 
   function toggleLanguage() {
@@ -6288,11 +6781,12 @@
     resetGame(true);
     persistenceReady = true;
     gameBooted = true;
+    const bootstrapChallengesChanged = evaluateBallChallenges(true);
     const bootstrapAchievementsChanged = evaluateAchievements({
-      metrics: ["highScore", "ballCollection", "themeCollection"],
+      metrics: ["highScore", "ballCollection", "shopBallCollection", "themeCollection"],
       announce: false,
       persist: false
-    });
+    }) || bootstrapChallengesChanged;
     const dailyLoginChanged = recordDailyLogin();
     syncAchievementUi();
     if (shouldPersistMigratedSave || (bootstrapAchievementsChanged && !dailyLoginChanged)) requestSave(true);
@@ -6333,6 +6827,13 @@
   achievementsBackButton.addEventListener("click", closeAchievements);
   achievementClaimAllButton.addEventListener("click", claimAllAchievementRewards);
   customizeBackButton.addEventListener("click", returnToMainMenu);
+  if (shopDialogOverlay) {
+    shopDialogConfirmButton.addEventListener("click", confirmShopDialog);
+    shopDialogCancelButton.addEventListener("click", cancelShopDialog);
+    shopDialogOverlay.addEventListener("click", (event) => {
+      if (event.target === shopDialogOverlay) cancelShopDialog();
+    });
+  }
   if (themeBackButton) themeBackButton.addEventListener("click", returnToMainMenu);
   menuButton.addEventListener("click", pauseGameplay);
   pauseContinueButton.addEventListener("click", resumePausedGame);
@@ -6357,6 +6858,11 @@
     if (!gameBooted) return;
     if (event.key === "Escape") {
       if (event.repeat) return;
+      if (shopDialog.open) {
+        event.preventDefault();
+        cancelShopDialog();
+        return;
+      }
       if (state === "playing") {
         event.preventDefault();
         pauseGameplay();

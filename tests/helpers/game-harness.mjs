@@ -25,10 +25,12 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
   });
   const element = () => ({
     getContext: () => context,
-    classList: { add: noop, remove: noop, toggle: noop },
+    classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
     style: { setProperty: noop }, setAttribute: noop, removeAttribute: noop,
     hasPointerCapture: () => false, releasePointerCapture: noop,
     focus: noop, blur: noop, querySelector: () => null, querySelectorAll: () => [],
+    append: noop, appendChild: noop, replaceChildren: noop, addEventListener: noop,
+    dataset: {},
     getBoundingClientRect: () => ({ width: 420, height: 746, left: 0, top: 0 })
   });
   let rafId = 0;
@@ -38,10 +40,11 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
     setTimeout: () => 0, clearTimeout: noop,
     window: {
       location: { search },
+      setTimeout: () => 0, clearTimeout: noop,
       requestAnimationFrame: fn => { rafs.set(++rafId, fn); return rafId; },
       cancelAnimationFrame: id => rafs.delete(id)
     },
-    document: { getElementById: element, querySelectorAll: () => [], body: element(), documentElement: element() },
+    document: { getElementById: element, createElement: element, querySelector: () => null, querySelectorAll: () => [], body: element(), documentElement: element() },
     localStorage: { getItem: () => null, setItem: noop }
   });
   vm.runInContext(physicsSource, sandbox);

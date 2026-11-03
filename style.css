@@ -1471,3 +1471,219 @@ p {
     margin-top: 12px;
   }
 }
+
+/* Shop dialog: purchase confirmation and challenge ball details. */
+.shopDialogOverlay {
+  z-index: 7;
+  background: rgba(25, 32, 44, 0.34);
+  backdrop-filter: blur(3px);
+}
+
+.shopDialogPanel {
+  width: min(320px, 88vw);
+  transform: scale(0.94);
+  transition: transform 180ms cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.shopDialogOverlay.active .shopDialogPanel {
+  transform: scale(1);
+}
+
+.shopDialogPreview {
+  display: grid;
+  min-height: 92px;
+  place-items: center;
+}
+
+.ballPreviewCanvas.large.shopDialogBall {
+  width: 150px;
+  height: 170px;
+  margin: -14px 0 -10px;
+}
+
+.themeSwatch.large {
+  width: 132px;
+  height: 84px;
+  margin: 8px 0 4px;
+  border-radius: 14px;
+}
+
+.themeSwatch.large::before {
+  right: 14px;
+  bottom: 16px;
+  left: 14px;
+  height: 7px;
+}
+
+.themeSwatch.large::after {
+  left: 18px;
+  width: 7px;
+  box-shadow: 89px 0 0 var(--theme-wall);
+}
+
+.shopDialogPanel h3 {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.shopDialogText {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.shopDialogDetail {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shopDialogProgress {
+  margin-top: 12px;
+}
+
+.shopDialogProgress[hidden],
+.shopDialogDetail[hidden],
+.gameOverChallenge[hidden] {
+  display: none;
+}
+
+.shopDialogActions {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.shopDialogActions .primaryButton,
+.shopDialogActions .secondaryButton {
+  height: 48px;
+  margin-top: 0;
+}
+
+/* Challenge balls in the list. */
+.ballSkinSection {
+  display: grid;
+  gap: 2px;
+  padding: 6px 2px 0;
+  text-align: left;
+}
+
+.ballSkinSection:first-child {
+  padding-top: 0;
+}
+
+.ballSkinSection strong {
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ballSkinSection small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ballSkinOption.challenge.locked {
+  border-style: dashed;
+  border-color: rgba(244, 123, 32, 0.5);
+}
+
+.challengeProgress {
+  --progress: 0;
+  display: flex;
+  margin-top: 6px;
+  align-items: center;
+  gap: 8px;
+}
+
+.challengeProgressBar {
+  position: relative;
+  height: 6px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.challengeProgressBar::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  content: "";
+  transform: scaleX(var(--progress));
+  transform-origin: left center;
+}
+
+.challengeProgressCount {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Ball unlock toast shows the ball itself instead of the star medal. */
+.achievementToastMedal.ballMedal {
+  background: none;
+  box-shadow: none;
+}
+
+.ballPreviewCanvas.toast {
+  width: 34px;
+  height: 34px;
+}
+
+.gameOverChallenge {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-align: left;
+  background: var(--secondary-bg);
+}
+
+.gameOverChallenge .ballPreviewCanvas {
+  width: 44px;
+  height: 44px;
+}
+
+.gameOverChallengeCopy {
+  display: grid;
+  min-width: 0;
+}
+
+.gameOverChallengeCopy small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.gameOverChallengeCopy strong {
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shopDialogPanel {
+    transform: none;
+    transition: none;
+  }
+}
