@@ -161,6 +161,7 @@
   const HIT_STOP = Object.freeze({ perfect: 0.05, ignite: 0.11 });
   const Physics = globalThis.HoopFlickPhysics;
   const BallArt = globalThis.HoopFlickBallArt;
+  const HoopArt = globalThis.HoopFlickHoopArt;
   const FLIGHT_PARAMS = Object.freeze({
     gravity: GRAVITY,
     airDrag: AIR_DRAG,
@@ -293,6 +294,16 @@
       rooftop: 250,
       minimal: 450,
     })
+  });
+
+  // Each theme flavours the same cues; gym keeps the original marimba exactly.
+  // root: score note, wave/decay/partial: mallet voice, rim: rim pitch, thump: wall/board pitch scale.
+  const THEME_SOUNDS = Object.freeze({
+    gym: Object.freeze({ root: 523.25, wave: "sine", waveGain: 1, decay: 0.32, partial: 4, bend: 0, click: 1, rim: 400, rimRing: 0.06, thump: 1, chainNet: false }),
+    sunset: Object.freeze({ root: 440, wave: "sine", waveGain: 1, decay: 0.48, partial: 3, bend: 0, click: 0.6, rim: 370, rimRing: 0.08, thump: 0.92, chainNet: false }),
+    neon: Object.freeze({ root: 523.25, wave: "square", waveGain: 0.3, decay: 0.16, partial: 0, bend: 1.02, click: 0.4, rim: 440, rimRing: 0.05, thump: 1.08, chainNet: false }),
+    rooftop: Object.freeze({ root: 587.33, wave: "triangle", waveGain: 0.85, decay: 0.26, partial: 5, bend: 0, click: 1.2, rim: 500, rimRing: 0.16, thump: 0.86, chainNet: true }),
+    minimal: Object.freeze({ root: 659.25, wave: "sine", waveGain: 0.9, decay: 0.6, partial: 0, bend: 0, click: 0.3, rim: 420, rimRing: 0.05, thump: 1, chainNet: false })
   });
 
   const BALL_SKIN_DISPLAY_ORDER = Object.freeze([
@@ -892,6 +903,11 @@
       id: "gym",
       nameKey: "themeGym",
       bgStyle: "classic",
+      // Cel hoop palette (hoopArt.js): rim body/shadow/light, ink outline, net front/back strands.
+      hoopArt: Object.freeze({
+        light: Object.freeze({ rim: "#e8452f", rimDark: "#a52a1f", rimLight: "#ffa184", ink: "#2b1c1a", net: "#fffdf8", netShade: "#c9c1b6", shadow: "rgba(38, 48, 68, 0.13)" }),
+        dark: Object.freeze({ rim: "#f25543", rimDark: "#9e2a22", rimLight: "#ffb196", ink: "#160c0b", net: "#f2f6f8", netShade: "#7f8d99", shadow: "rgba(0, 0, 0, 0.32)" })
+      }),
       motif: "none",
       colors: {
         light: {
@@ -960,6 +976,10 @@
       id: "sunset",
       nameKey: "themeSunset",
       bgStyle: "sunset",
+      hoopArt: Object.freeze({
+        light: Object.freeze({ rim: "#ec9437", rimDark: "#a2452f", rimLight: "#ffd58a", ink: "#3a1b22", net: "#fffaf0", netShade: "#e2c3b0", shadow: "rgba(122, 52, 44, 0.14)" }),
+        dark: Object.freeze({ rim: "#f24cbf", rimDark: "#87276a", rimLight: "#ffb9ea", ink: "#1d0a18", net: "#f7eefc", netShade: "#94739f", shadow: "rgba(0, 0, 0, 0.34)" })
+      }),
       motif: "sun",
       colors: {
         light: {
@@ -1028,6 +1048,10 @@
       id: "neon",
       nameKey: "themeNeon",
       bgStyle: "neon",
+      hoopArt: Object.freeze({
+        light: Object.freeze({ rim: "#13a9f0", rimDark: "#0b5fbd", rimLight: "#97f4ff", ink: "#0c2944", net: "#fbffff", netShade: "#a6d5e2", shadow: "rgba(12, 60, 90, 0.13)" }),
+        dark: Object.freeze({ rim: "#14e0cc", rimDark: "#196a96", rimLight: "#c8fff5", ink: "#03111b", net: "#e4ffff", netShade: "#3b7b8f", shadow: "rgba(0, 0, 0, 0.36)", glow: true })
+      }),
       motif: "geometry",
       colors: {
         light: {
@@ -1096,6 +1120,11 @@
       id: "rooftop",
       nameKey: "themeRooftop",
       bgStyle: "court",
+      // Street court: a chain net to match the rooftop chain-net sound.
+      hoopArt: Object.freeze({
+        light: Object.freeze({ rim: "#df62ea", rimDark: "#863095", rimLight: "#ffc6f8", ink: "#2b1730", net: "#d9dee6", netShade: "#8d95a3", shadow: "rgba(40, 50, 70, 0.14)", chainNet: true }),
+        dark: Object.freeze({ rim: "#f27bc6", rimDark: "#862b67", rimLight: "#ffc9ea", ink: "#170d16", net: "#d3d8e0", netShade: "#666f80", shadow: "rgba(0, 0, 0, 0.36)", chainNet: true })
+      }),
       motif: "court",
       colors: {
         light: {
@@ -1164,6 +1193,10 @@
       id: "minimal",
       nameKey: "themeMinimal",
       bgStyle: "minimal",
+      hoopArt: Object.freeze({
+        light: Object.freeze({ rim: "#3e3a3a", rimDark: "#1c1a1a", rimLight: "#9a9393", ink: "#121010", net: "#ffffff", netShade: "#cfc9c0", shadow: "rgba(30, 28, 26, 0.12)", rimThickness: 4.2 }),
+        dark: Object.freeze({ rim: "#ebe6de", rimDark: "#a29c93", rimLight: "#ffffff", ink: "#0a0a0c", net: "#f1ede6", netShade: "#78746d", shadow: "rgba(0, 0, 0, 0.34)", rimThickness: 4.2 })
+      }),
       motif: "vignette",
       colors: {
         light: {
@@ -1404,6 +1437,8 @@
       challengeLocked: "Görev topu",
       challengeProgress: "İlerleme",
       newBallUnlocked: "Yeni top açıldı",
+      newBadge: "YENİ",
+      newBallsReady: "yeni top",
       nextChallengeBall: "Sıradaki görev topu",
       confirmPurchase: "{price} coin karşılığında satın almak istiyor musun?",
       balanceAfterPurchase: "Satın aldıktan sonra kalan: {coins} coin",
@@ -1579,6 +1614,8 @@
       challengeLocked: "Challenge ball",
       challengeProgress: "Progress",
       newBallUnlocked: "New ball unlocked",
+      newBadge: "NEW",
+      newBallsReady: "new balls",
       nextChallengeBall: "Next challenge ball",
       confirmPurchase: "Buy it for {price} coins?",
       balanceAfterPurchase: "Coins left after buying: {coins}",
@@ -1777,6 +1814,9 @@
   const debugShots = new URLSearchParams(window.location.search).get("debugShots") === "1"
     ? { preview: null, actual: [], steps: 0, recording: false, ratio: 0 }
     : null;
+  // A/B aid while the cel hoops are new: ?hoops=sprites draws the old PNG hoop layers.
+  const useLegacyHoopSprites = new URLSearchParams(window.location.search).get("hoops") === "sprites";
+  const RIM_FLASH_DURATION = 0.32;
   // Dev aid: ?perf=1 shows frame timing, split by whether the flame trail is on.
   const perfStats = new URLSearchParams(window.location.search).get("perf") === "1"
     ? { windowStart: 0, frames: 0, worstMs: 0, cpuMs: 0, cpuMaxMs: 0, line: "", fire: { frames: 0, slow: 0, worstMs: 0 }, normal: { frames: 0, slow: 0, worstMs: 0 } }
@@ -1852,7 +1892,10 @@
       return false;
     }
     const activeTimeChanged = state === "playing" ? stopActivePlayClock() : false;
-    if (state === "customize" && nextState !== "customize") stopBallPreviewAnimation();
+    if (state === "customize" && nextState !== "customize") {
+      stopBallPreviewAnimation();
+      markNewBallsSeen();
+    }
     closeShopDialog();
     state = nextState;
     resetPhysicsClock();
@@ -2931,6 +2974,7 @@
       hoop.entranceTimer = Math.min(1, (hoop.entranceTimer ?? hoop.spawnProgress ?? 1) + dt / HOOP_SPAWN_DURATION);
       hoop.spawnProgress = hoop.entranceTimer;
       hoop.netAnimation = Math.max(0, hoop.netAnimation - dt);
+      hoop.rimFlash = Math.max(0, (hoop.rimFlash || 0) - dt);
       hoop.releaseAnimation = Math.max(0, hoop.releaseAnimation - dt);
     }
 
@@ -3069,6 +3113,7 @@
 
   function beginBallSettle(hoop) {
     const localBall = worldToHoop(hoop, ball.x, ball.y);
+    emitLandingDust(hoop, Math.hypot(ball.vx, ball.vy));
     ball.vx = 0;
     ball.vy = 0;
     ball.angularVelocity = 0;
@@ -3379,6 +3424,34 @@
           life: random(0.3, 0.45),
           maxLife: 0.45,
           size: random(3.5, 6.5) * (0.8 + strength * 0.5),
+          color: "#c9b8a6"
+        });
+      }
+    }
+  }
+
+  // Cel puffs that squeeze out of both sides of the net when the ball drops in; bigger on a fast drop.
+  // They start just outside the net silhouette so the front net layer does not hide them.
+  function emitLandingDust(hoop, speed) {
+    const strength = clamp(speed / 900, 0.25, 1);
+    const sideX = Math.cos(hoop.rotation);
+    const sideY = Math.sin(hoop.rotation);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i += 1) {
+        // Net half-width at these heights is about 0.91, 0.8 and 0.63 of the rim's half-width.
+        const origin = hoopToWorld(hoop, side * hoop.w * 0.5 * [0.98, 0.88, 0.72][i], 14 + i * 9);
+        const push = random(60, 120) * strength;
+        pushParticle({
+          type: "dust",
+          x: origin.x,
+          y: origin.y,
+          vx: side * sideX * push + random(-10, 10),
+          vy: side * sideY * push - random(10, 35) * strength,
+          gravity: -40,
+          shrinkRate: 0,
+          life: random(0.34, 0.52),
+          maxLife: 0.52,
+          size: random(3.2, 5.6) * (0.75 + strength * 0.5),
           color: "#c9b8a6"
         });
       }
@@ -3912,7 +3985,12 @@
 
   function triggerHoopScoreEffect(hoop, result) {
     playNetAnimation(hoop);
-    if (result.swish) triggerSwishEffect(hoop);
+    if (result.swish) {
+      // The rim flashes on a swish: white normally, the flame's colour once the ball is burning.
+      hoop.rimFlash = RIM_FLASH_DURATION;
+      hoop.rimFlashColor = ballHeat > 0.05 && lastBallHeatColors ? lastBallHeatColors[1] : "#ffffff";
+      triggerSwishEffect(hoop);
+    }
   }
 
   function playNetAnimation(hoop) {
@@ -4142,8 +4220,8 @@
     if (debugShots) drawDebugShots();
     if (drag && ball.held) drawTrajectory();
     drawBall();
-    if (hoopSpritesReady) {
-      for (const hoop of hoops) drawHoopFront(hoop, true);
+    if (hoopSpritesReady || HoopArt) {
+      for (const hoop of hoops) drawHoopFront(hoop, hoopSpritesReady);
     } else if (ball.held || ball.settle) {
       const currentHoop = getHoopById(currentHoopId);
       if (currentHoop) drawHoopFront(currentHoop);
@@ -4529,6 +4607,12 @@
     applyHoopSpawnTransform(hoop);
     ctx.rotate(hoop.rotation + deformation.visualTilt);
 
+    if (!useHoopSprites && HoopArt) {
+      HoopArt.drawHoopBack(ctx, getHoopArtPalette(), getHoopArtOptions(hoop, deformation, boardGeometry));
+      ctx.restore();
+      return;
+    }
+
     ctx.fillStyle = colors.hoopShadow;
     ctx.beginPath();
     ctx.ellipse(2, rimY + 48 + netStretch * 0.55, hoop.w * 0.27, 4.2, 0, 0, Math.PI * 2);
@@ -4613,8 +4697,44 @@
     ctx.quadraticCurveTo(offsetX, y + sag + offsetY, halfWidth + offsetX * 0.25, y + offsetY * 0.4);
   }
 
+  function getHoopArtPalette() {
+    const theme = THEMES[selectedThemeId] || THEMES.gym;
+    const palettes = theme.hoopArt || THEMES.gym.hoopArt;
+    return darkMode ? palettes.dark : palettes.light;
+  }
+
+  function getHoopArtOptions(hoop, deformation, boardGeometry) {
+    // The rim warms up while the burning ball rests in it.
+    const holdsBall = hoop.id === currentHoopId && (ball.held || ball.settle);
+    return {
+      halfWidth: hoop.w * 0.5,
+      swing: deformation.netSwing,
+      stretch: deformation.netStretch,
+      ripple: hoop.netAnimation > 0 ? 1 - hoop.netAnimation / NET_ANIMATION_DURATION : -1,
+      rimScaleX: deformation.rimScaleX,
+      rimScaleY: deformation.rimScaleY,
+      flash: clamp((hoop.rimFlash || 0) / RIM_FLASH_DURATION, 0, 1),
+      flashColor: hoop.rimFlashColor || "#ffffff",
+      heat: holdsBall ? ballHeat : 0,
+      heatColors: lastBallHeatColors,
+      darkBackground: isCanvasDarkBackground(),
+      board: boardGeometry
+    };
+  }
+
   function drawHoopFront(hoop, useHoopSprites) {
     const deformation = getHoopDeformation(hoop);
+
+    if (!useHoopSprites && HoopArt) {
+      ctx.save();
+      if (hoop.role === HOOP_ROLE.INACTIVE) ctx.globalAlpha = 0.42;
+      ctx.translate(hoop.x + deformation.offsetX, hoop.y + deformation.offsetY);
+      applyHoopSpawnTransform(hoop);
+      ctx.rotate(hoop.rotation + deformation.visualTilt);
+      HoopArt.drawHoopFront(ctx, getHoopArtPalette(), getHoopArtOptions(hoop, deformation, null));
+      ctx.restore();
+      return;
+    }
 
     if (useHoopSprites) {
       ctx.save();
@@ -4717,6 +4837,8 @@
   }
 
   function preloadHoopSpriteSet() {
+    // Sprites load only for the A/B flag, or as the fallback if hoopArt.js failed to load.
+    if (!useLegacyHoopSprites && HoopArt) return;
     const spriteSet = getActiveHoopSpriteSet();
     if (hoopSpriteState.started && hoopSpriteState.setId === spriteSet.id) return;
     hoopSpriteState.setId = spriteSet.id;
@@ -5029,9 +5151,14 @@
     if (audioContext.state === "suspended") audioContext.resume();
   }
 
+  function getThemeSound() {
+    return THEME_SOUNDS[selectedThemeId] || THEME_SOUNDS.gym;
+  }
+
   function playGameSound(name, context) {
     if (muted || userPaused) return;
     const detail = context || {};
+    const voice = getThemeSound();
     // UI sounds share the wall thump's character: a soft triangle body plus a filtered noise tap.
     if (name === "button") {
       playTone(300, 0.07, "triangle", 0.024, 0, 210);
@@ -5050,18 +5177,19 @@
     } else if (name === "rim") {
       // Short, dull metal "tonk" in the wall thump's family; no long ring.
       const strength = clamp(Number(detail.strength) || 0, 0, 1);
-      const base = 400 + Math.random() * 40;
+      const base = voice.rim + Math.random() * 40;
       const level = 0.014 + strength * 0.034;
       playTone(base, 0.13, "triangle", level, 0, base * 0.96);
-      playTone(base * 2.7, 0.06, "sine", level * 0.28, 0, 0);
+      playTone(base * 2.7, voice.rimRing, "sine", level * 0.28, 0, 0);
       playNoise(0.02, level * 0.6, "lowpass", 2200, 700, 0.7);
     } else if (name === "net") {
       const strength = clamp(Number(detail.strength) || 0, 0, 1);
       playNoise(0.08, 0.012 + strength * 0.025, "lowpass", 700, 300, 0.6);
       playTone(260, 0.05, "triangle", 0.008 + strength * 0.012, 0, 200);
+      if (voice.chainNet) playChainJingle(0.006 + strength * 0.012, 0);
     } else if (name === "board" || name === "wall") {
       const strength = clamp(Number(detail.strength) || 0, 0, 1);
-      const pitch = name === "board" ? 150 : 120;
+      const pitch = (name === "board" ? 150 : 120) * voice.thump;
       playTone(pitch, 0.09, "triangle", 0.018 + strength * 0.035, 0, pitch * 0.55);
       playNoise(0.06, 0.02 + strength * 0.04, "lowpass", 900, 300, 0.7);
     } else if (name === "score") {
@@ -5069,7 +5197,7 @@
       // Normal: two notes. Perfect: three-note arpeggio, a semitone higher per streak step,
       // with a bright top note once the ball is on fire. Bank shots open with a wood knock.
       const streak = Math.min(Number(detail.streak) || 0, 8);
-      const root = 523.25 * Math.pow(2, (detail.perfect ? streak : 0) / 12);
+      const root = voice.root * Math.pow(2, (detail.perfect ? streak : 0) / 12);
       let start = 0;
       playTone(140, 0.08, "triangle", 0.03, 0, 90);
       playNoise(0.05, 0.022, "lowpass", 600, 200, 0.7);
@@ -5078,6 +5206,7 @@
         playNoise(0.03, 0.02, "lowpass", 1200, 400, 0.7, 0.02);
         start = 0.05;
       }
+      if (voice.chainNet) playChainJingle(0.014, 0.01);
       const notes = detail.perfect ? [1, 1.26, 1.5] : [0.75, 1];
       if (detail.perfect && streak >= 3) notes.push(2);
       notes.forEach((ratio, i) => playMallet(root * ratio, start + 0.02 + i * 0.07, i === notes.length - 1 ? 0.034 : 0.026));
@@ -5216,7 +5345,8 @@
       dailyStreak: 0,
       lastLoginDay: "",
       runIgnitionsBest: 0,
-      bankPerfectBaskets: 0
+      bankPerfectBaskets: 0,
+      newBallIds: []
     };
   }
 
@@ -5225,6 +5355,12 @@
     return ACHIEVEMENTS
       .map((achievement) => achievement.id)
       .filter((id) => requested.has(id) && (!allowedIds || allowedIds.has(id)));
+  }
+
+  // Challenge balls earned but not yet seen in the shop, in shop order.
+  function normalizeNewBallIds(value) {
+    const requested = new Set(Array.isArray(value) ? value.filter((id) => typeof id === "string") : []);
+    return CHALLENGE_SKIN_ORDER.filter((id) => requested.has(id));
   }
 
   function normalizeLoginDay(value) {
@@ -5248,7 +5384,8 @@
       dailyStreak: normalizeStatValue(source.dailyStreak),
       lastLoginDay: normalizeLoginDay(source.lastLoginDay),
       runIgnitionsBest: normalizeStatValue(source.runIgnitionsBest),
-      bankPerfectBaskets: normalizeStatValue(source.bankPerfectBaskets)
+      bankPerfectBaskets: normalizeStatValue(source.bankPerfectBaskets),
+      newBallIds: normalizeNewBallIds(source.newBallIds)
     };
   }
 
@@ -5393,10 +5530,12 @@
       const challenge = BALL_CHALLENGES[skinId];
       if (ownedBallSkins.has(skinId) || getBallChallengeProgress(challenge) < challenge.target) continue;
       ownedBallSkins.add(skinId);
+      achievementState.newBallIds = normalizeNewBallIds([...achievementState.newBallIds, skinId]);
       changed = true;
       if (announce !== false) queueBallUnlockToast(skinId);
     }
     if (!changed) return false;
+    syncAchievementBadges();
     evaluateAchievements({ metrics: ["ballCollection", "shopBallCollection"], announce, persist: false });
     if (state === "customize") renderBallCustomizer();
     return true;
@@ -5696,7 +5835,28 @@
     return getPendingAchievementIds().reduce((total, id) => total + ACHIEVEMENT_BY_ID[id].reward, 0);
   }
 
+  function getNewBallIds() {
+    return achievementState.newBallIds.filter((id) => ownedBallSkins.has(id));
+  }
+
+  // Leaving the ball shop counts as having seen every new ball in it.
+  function markNewBallsSeen() {
+    if (achievementState.newBallIds.length === 0) return;
+    achievementState.newBallIds = [];
+    syncAchievementBadges();
+    requestSave(false);
+  }
+
   function syncAchievementBadges() {
+    const newBallCount = getNewBallIds().length;
+    if (customizeButton) {
+      customizeButton.dataset.achievementCount = String(newBallCount);
+      customizeButton.classList.toggle("hasAchievementBadge", newBallCount > 0);
+      customizeButton.setAttribute(
+        "aria-label",
+        newBallCount > 0 ? `${t("customize")} · ${newBallCount} ${t("newBallsReady")}` : t("customize")
+      );
+    }
     const pendingCount = getPendingAchievementIds().length;
     for (const button of [profileButton, profileAchievementsButton]) {
       if (!button) continue;
@@ -6189,6 +6349,12 @@
     const name = document.createElement("strong");
     const description = document.createElement("small");
     name.textContent = t(skin.nameKey);
+    if (isOwned && achievementState.newBallIds.includes(skin.id)) {
+      const badge = document.createElement("span");
+      badge.className = "newBadge";
+      badge.textContent = t("newBadge");
+      name.appendChild(badge);
+    }
     description.textContent = stateLabel;
     copy.append(name, description);
     if (lockedChallenge) copy.appendChild(createChallengeProgress(challenge));
@@ -6663,11 +6829,18 @@
     osc.stop(now + duration + 0.02);
   }
 
-  // Marimba-like mallet: sine body, short 4th partial and a tiny attack click.
+  // Mallet in the current theme's voice; gym is the original marimba (sine body, 4th partial, click).
   function playMallet(freq, delay, gain) {
-    playTone(freq, 0.32, "sine", gain, delay, 0);
-    playTone(freq * 4, 0.06, "sine", gain * 0.3, delay, 0);
-    playNoise(0.015, gain * 0.5, "lowpass", 2500, 0, 0.7, delay);
+    const voice = getThemeSound();
+    playTone(freq, voice.decay, voice.wave, gain * voice.waveGain, delay, voice.bend ? freq * voice.bend : 0);
+    if (voice.partial) playTone(freq * voice.partial, 0.06, "sine", gain * 0.3, delay, 0);
+    playNoise(0.015, gain * 0.5 * voice.click, "lowpass", 2500, 0, 0.7, delay);
+  }
+
+  // Street-court chain net: a few short bright metal ticks with a thin high noise rattle.
+  function playChainJingle(gain, delay) {
+    [2340, 3120, 2780].forEach((freq, i) => playTone(freq, 0.05, "sine", gain * (1 - i * 0.2), delay + i * 0.028, 0));
+    playNoise(0.09, gain * 0.7, "highpass", 4200, 0, 0.7, delay);
   }
 
   function playNoise(duration, gain, filterType, freq, endFreq, q, delay) {
@@ -6787,6 +6960,13 @@
       announce: false,
       persist: false
     }) || bootstrapChallengesChanged;
+    // Playtest aid: ?devCoins=N tops up coins on a local dev server only; ignored on the live site.
+    const devCoins = Number(new URLSearchParams(window.location.search).get("devCoins"));
+    if (Number.isSafeInteger(devCoins) && devCoins > 0 && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
+      coins = Math.max(normalizeCoins(coins), devCoins);
+      syncEconomyBalances();
+      requestSave(true);
+    }
     const dailyLoginChanged = recordDailyLogin();
     syncAchievementUi();
     if (shouldPersistMigratedSave || (bootstrapAchievementsChanged && !dailyLoginChanged)) requestSave(true);

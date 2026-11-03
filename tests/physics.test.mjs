@@ -603,3 +603,108 @@ test('a new run clears a pending hit-stop', () => {
   g.evaluate('gameBooted = true; hitStopTimer = HIT_STOP.ignite; resetGame(false);');
   assert.equal(g.evaluate('hitStopTimer'), 0);
 });
+
+test('a basket kicks landing dust out of both sides of the net without touching the ball', () => {
+  const run = (withDust) => {
+    const g = loadGame();
+    return JSON.parse(g.evaluate(`
+      playGameSound = () => {};
+      recordAchievementBasket = () => false;
+      ${withDust ? '' : 'emitLandingDust = () => {};'}
+      state = 'playing';
+      hoops = [makeHoop(210, 600, 0, null), makeHoop(300, 420, 1, null)];
+      currentHoopId = 0;
+      targetHoopId = 1;
+      setHoopRoles(0, 1);
+      particles = [];
+      Object.assign(ball, { x: 300, y: 425, vx: 0, vy: 600, held: false, touchedHoop: false, touchedWall: false });
+      scoreTargetHoop(hoops[1]);
+      const dust = particles.filter((p) => p.type === 'dust');
+      JSON.stringify({
+        dust: dust.length,
+        left: dust.filter((p) => p.vx < 0).length,
+        right: dust.filter((p) => p.vx > 0).length,
+        ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, settle: ball.settle }
+      });
+    `));
+  };
+  const withDust = run(true);
+  const without = run(false);
+  assert.equal(withDust.dust, 6);
+  assert.ok(withDust.left >= 2 && withDust.right >= 2, 'puffs go both ways');
+  assert.equal(without.dust, 0);
+  assert.deepEqual(withDust.ball, without.ball, 'dust is presentation only');
+});
+
+test('every theme has a sound voice and the gym voice is the original marimba', () => {
+  const g = loadGame();
+  const themes = JSON.parse(g.evaluate('JSON.stringify(Object.keys(THEMES))'));
+  const voices = JSON.parse(g.evaluate('JSON.stringify(THEME_SOUNDS)'));
+  assert.deepEqual(Object.keys(voices).sort(), themes.sort());
+  const malletCalls = JSON.parse(g.evaluate(`
+    const calls = [];
+    playTone = (...args) => calls.push(['tone', ...args]);
+    playNoise = (...args) => calls.push(['noise', ...args]);
+    selectedThemeId = 'gym';
+    playMallet(523.25, 0.1, 0.03);
+    JSON.stringify(calls);
+  `));
+  assert.deepEqual(malletCalls, [
+    ['tone', 523.25, 0.32, 'sine', 0.03, 0.1, 0],
+    ['tone', 2093, 0.06, 'sine', 0.009, 0.1, 0],
+    ['noise', 0.015, 0.015, 'lowpass', 2500, 0, 0.7, 0.1]
+  ]);
+});
+
+test('only the rooftop chain net jingles', () => {
+  const g = loadGame();
+  const jingles = JSON.parse(g.evaluate(`
+    let count = 0;
+    playTone = () => {};
+    playNoise = () => {};
+    playChainJingle = () => { count += 1; };
+    muted = false;
+    userPaused = false;
+    const result = {};
+    for (const id of Object.keys(THEMES)) {
+      selectedThemeId = id;
+      count = 0;
+      playGameSound('net', { strength: 0.5 });
+      playGameSound('score', { perfect: true, wall: false, streak: 1 });
+      result[id] = count;
+    }
+    JSON.stringify(result);
+  `));
+  assert.deepEqual(jingles, { gym: 0, sunset: 0, neon: 0, rooftop: 2, minimal: 0 });
+});
+
+test('the gym rim, thump and score cues are unchanged by the theme voices', () => {
+  const g = loadGame();
+  const calls = JSON.parse(g.evaluate(`
+    const calls = [];
+    playTone = (...args) => calls.push(['tone', ...args]);
+    playNoise = (...args) => calls.push(['noise', ...args]);
+    Math.random = () => 0.5;
+    muted = false;
+    userPaused = false;
+    selectedThemeId = 'gym';
+    playGameSound('rim', { strength: 0.5 });
+    playGameSound('board', { strength: 0.5 });
+    playGameSound('wall', { strength: 0.5 });
+    playGameSound('score', { perfect: false, wall: false, streak: 0 });
+    JSON.stringify(calls);
+  `));
+  const rim = 420;
+  const level = 0.014 + 0.5 * 0.034;
+  assert.deepEqual(calls.slice(0, 7), [
+    ['tone', rim, 0.13, 'triangle', level, 0, rim * 0.96],
+    ['tone', rim * 2.7, 0.06, 'sine', level * 0.28, 0, 0],
+    ['noise', 0.02, level * 0.6, 'lowpass', 2200, 700, 0.7],
+    ['tone', 150, 0.09, 'triangle', 0.018 + 0.5 * 0.035, 0, 150 * 0.55],
+    ['noise', 0.06, 0.02 + 0.5 * 0.04, 'lowpass', 900, 300, 0.7],
+    ['tone', 120, 0.09, 'triangle', 0.018 + 0.5 * 0.035, 0, 120 * 0.55],
+    ['noise', 0.06, 0.02 + 0.5 * 0.04, 'lowpass', 900, 300, 0.7]
+  ]);
+  const firstNote = calls.find((call, i) => i > 8 && call[0] === 'tone' && call[3] === 'sine' && call[2] === 0.32);
+  assert.equal(firstNote[1], 523.25 * 0.75, 'score notes keep the C5 root');
+});

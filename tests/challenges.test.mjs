@@ -186,3 +186,24 @@ test('the all-balls achievement needs every shop ball and ignores challenge ball
   game.evaluate('evaluateAchievements({ metrics: ["shopBallCollection"], announce: false, persist: false })');
   assert.equal(game.evaluate('achievementState.unlockedIds.includes("ball_collection_all")'), true);
 });
+
+test('a newly earned challenge ball stays marked new until the ball shop is left', () => {
+  const game = loadQuietGame();
+  game.evaluate('achievementState.perfectStreakBest = 8; evaluateBallChallenges(false)');
+  assert.deepEqual(JSON.parse(game.evaluate('JSON.stringify(getNewBallIds())')), ['crystal']);
+  const saved = JSON.parse(game.evaluate('JSON.stringify(makeSaveObject())'));
+  assert.deepEqual(saved.achievements.newBallIds, ['crystal'], 'the mark survives a reload');
+  game.evaluate('setGameState("customize")');
+  assert.deepEqual(JSON.parse(game.evaluate('JSON.stringify(getNewBallIds())')), ['crystal'], 'still new while browsing');
+  game.evaluate('setGameState("menu")');
+  assert.deepEqual(JSON.parse(game.evaluate('JSON.stringify(getNewBallIds())')), []);
+});
+
+test('bought shop balls and unknown ids are never marked new', () => {
+  const game = loadQuietGame();
+  game.evaluate('coins = 500; selectBallSkin("zebra"); confirmShopDialog()');
+  assert.equal(owned(game, 'zebra'), true, 'the purchase went through');
+  assert.deepEqual(JSON.parse(game.evaluate('JSON.stringify(getNewBallIds())')), []);
+  const normalized = JSON.parse(game.evaluate('JSON.stringify(normalizeAchievementState({ newBallIds: ["zebra", "galaxy", "nope", 3, "crystal"] }).newBallIds)'));
+  assert.deepEqual(normalized, ['crystal', 'galaxy'], 'challenge ids only, in shop order');
+});
