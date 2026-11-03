@@ -26,9 +26,9 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
   const element = () => ({
     getContext: () => context,
     classList: { add: noop, remove: noop, toggle: noop },
-    style: {}, setAttribute: noop, removeAttribute: noop,
+    style: { setProperty: noop }, setAttribute: noop, removeAttribute: noop,
     hasPointerCapture: () => false, releasePointerCapture: noop,
-    focus: noop, blur: noop, querySelectorAll: () => [],
+    focus: noop, blur: noop, querySelector: () => null, querySelectorAll: () => [],
     getBoundingClientRect: () => ({ width: 420, height: 746, left: 0, top: 0 })
   });
   let rafId = 0;

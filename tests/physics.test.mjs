@@ -536,3 +536,70 @@ test('a basket plays one combined score sound, not stacked cues', () => {
   assert.deepEqual(sounds.map(sound => sound.name), ['score']);
   assert.deepEqual(sounds[0].detail, { perfect: true, wall: true, streak: 4 });
 });
+
+test('hit-stop delays fixed steps without changing them, and presentation keeps running', () => {
+  const run = (freezeAtFrame) => {
+    const g = loadGame();
+    g.evaluate(`
+      gameBooted = true;
+      state = 'playing';
+      hoops = [makeHoop(210, 600, 0, null), makeHoop(300, 420, 1, null)];
+      placeBallInHoop(hoops[0]);
+      ball.held = false;
+      ball.launchHoopId = 0;
+      ball.vx = 120;
+      ball.vy = -700;
+    `);
+    let now = 0;
+    const frame = () => { now += 1000 / 60; g.evaluate(`loop(${now}, animationLoopGeneration, false)`); };
+    const path = [];
+    let frozenSteps = null;
+    for (let i = 0; i < 40; i++) {
+      if (i === freezeAtFrame) {
+        g.evaluate('hitStopTimer = HIT_STOP.ignite; pushParticle({ x: 0, y: 0, vx: 100, vy: 0, life: 1, maxLife: 1, size: 3 });');
+        const before = g.evaluate('({ t: simulationTime, x: particles[particles.length - 1].x })');
+        frame();
+        const after = g.evaluate('({ t: simulationTime, x: particles[particles.length - 1].x })');
+        frozenSteps = { simulation: after.t - before.t, particle: after.x - before.x };
+      } else {
+        frame();
+      }
+      path.push(g.evaluate('JSON.stringify([ball.x, ball.y])'));
+    }
+    return { path: [...new Set(path)], frozenSteps };
+  };
+  const plain = run(-1);
+  const stopped = run(10);
+  assert.equal(stopped.frozenSteps.simulation, 0, 'no fixed step runs while frozen');
+  assert.ok(stopped.frozenSteps.particle > 0, 'particles keep moving while frozen');
+  // The same positions occur in the same order; hit-stop only shifts them later in time.
+  assert.deepEqual(stopped.path, plain.path.slice(0, stopped.path.length));
+});
+
+test('a perfect basket that lights the flame holds longer than a plain perfect', () => {
+  const g = loadGame();
+  g.evaluate(`
+    gameBooted = true;
+    state = 'playing';
+    hoops = [makeHoop(210, 600, 0, null), makeHoop(300, 420, 1, null)];
+    placeBallInHoop(hoops[0]);
+    ball.touchedHoop = false;
+    swishStreak = 0;
+  `);
+  const holds = [];
+  const baskets = g.evaluate('getFlameThreshold()') + 1;
+  for (let i = 0; i < baskets; i++) {
+    g.evaluate(`hitStopTimer = 0; ball.touchedHoop = false; scoreTargetHoop(hoops[1]); hoops[1].id = 1;`);
+    holds.push(g.evaluate('hitStopTimer'));
+  }
+  const threshold = g.evaluate('getFlameThreshold()');
+  holds.forEach((hold, i) => {
+    assert.equal(hold, i + 1 === threshold ? g.evaluate('HIT_STOP.ignite') : g.evaluate('HIT_STOP.perfect'));
+  });
+});
+
+test('a new run clears a pending hit-stop', () => {
+  const g = loadGame();
+  g.evaluate('gameBooted = true; hitStopTimer = HIT_STOP.ignite; resetGame(false);');
+  assert.equal(g.evaluate('hitStopTimer'), 0);
+});

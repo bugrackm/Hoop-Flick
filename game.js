@@ -54,6 +54,7 @@
   const coinHud = document.getElementById("coinHud");
   const coinHudValue = document.getElementById("coinHudValue");
   const timedShotHud = document.getElementById("timedShotHud");
+  const streakHud = document.getElementById("streakHud");
   const timedShotValue = document.getElementById("timedShotValue");
   const activePlayTimeValue = document.getElementById("activePlayTimeValue");
   const perfectBasketsValue = document.getElementById("perfectBasketsValue");
@@ -145,6 +146,8 @@
   const FLAME_TRAIL_SPACING = 6;
   const FLAME_TRAIL_MAX_LENGTH = 120;
   const SCORE_SHAKE = Object.freeze({ basket: 2.5, perfect: 3.5, perStreak: 0.5, wall: 1, max: 6 });
+  // Brief simulation freeze that lands the moment; ignition (the streak reaching the flame) holds longer.
+  const HIT_STOP = Object.freeze({ perfect: 0.05, ignite: 0.11 });
   const Physics = globalThis.HoopFlickPhysics;
   const BallArt = globalThis.HoopFlickBallArt;
   const FLIGHT_PARAMS = Object.freeze({
@@ -1554,6 +1557,8 @@
   let ballHeat = 0;
   let ballIgnitionFlash = 0;
   let ballFlameWasActive = false;
+  let hitStopTimer = 0;
+  const streakHudState = { chain: -1, preset: "", dark: null };
   let lastBallHeatColors = BALL_EFFECT_PRESETS.classic.perfectFlameColors;
   const ballPreviewAnimation = { frameId: null, startedAt: 0 };
   const glowSprites = new Map();
@@ -1646,6 +1651,7 @@
 
   function resetGame(toMenu) {
     userPaused = false;
+    hitStopTimer = 0;
     settingsOrigin = "menu";
     score = 0;
     runShotCount = 0;
@@ -2679,6 +2685,7 @@
 
     updateBallSquash(dt);
     updateBallIgnition(dt);
+    syncStreakHud();
     if (state === "playing") {
       const cameraTarget = previousTargetCameraY + (targetCameraY - previousTargetCameraY) * renderAlpha;
       cameraY += (cameraTarget - cameraY) * (1 - Math.pow(1 - 4.2 / 60, dt * 60));
@@ -3127,10 +3134,62 @@
     }
   }
 
+  function getFlameThreshold() {
+    return BALL_EFFECT_PRESETS[ballEffects.selectedPreset]?.comboThreshold ?? 2;
+  }
+
   function getActiveFlamePreset() {
     const preset = BALL_EFFECT_PRESETS[ballEffects.selectedPreset];
-    if (!preset || state !== "playing" || perfectChain < (preset.comboThreshold ?? 2)) return null;
+    if (!preset || state !== "playing" || perfectChain < getFlameThreshold()) return null;
     return preset;
+  }
+
+  // HUD pips count perfects toward the flame; once lit it shows the streak in the skin's flame colours.
+  function syncStreakHud() {
+    if (!streakHud) return;
+    const chain = state === "playing" ? perfectChain : 0;
+    const threshold = getFlameThreshold();
+    const previous = streakHudState.chain;
+    const paletteChanged = streakHudState.preset !== ballEffects.selectedPreset || streakHudState.dark !== darkMode;
+    if (chain === previous && !paletteChanged) return;
+    if (paletteChanged) {
+      const preset = BALL_EFFECT_PRESETS[ballEffects.selectedPreset] || BALL_EFFECT_PRESETS.classic;
+      const colors = getFlameStyle(preset, darkMode).colors;
+      streakHud.style.setProperty("--flame-core", colors[0]);
+      streakHud.style.setProperty("--flame-mid", colors[1]);
+      streakHud.style.setProperty("--flame-outer", colors[2]);
+    }
+    streakHudState.chain = chain;
+    streakHudState.preset = ballEffects.selectedPreset;
+    streakHudState.dark = darkMode;
+    streakHud.hidden = chain <= 0;
+    if (chain <= 0) {
+      // A hidden element replays leftover animations when shown again.
+      streakHud.classList.remove("onFire", "ignite", "bump");
+      return;
+    }
+    const onFire = chain >= threshold;
+    const pips = streakHud.querySelector(".streakPips");
+    const count = streakHud.querySelector(".streakCount");
+    if (!pips || !count) return;
+    if (pips.childElementCount !== threshold) {
+      pips.replaceChildren();
+      for (let i = 0; i < threshold; i += 1) pips.appendChild(document.createElement("span"));
+    }
+    for (let i = 0; i < threshold; i += 1) {
+      const pip = pips.children[i];
+      pip.className = i < chain ? "filled" : "";
+      if (i === chain - 1 && chain > previous && !onFire) restartHudAnimation(pip, "pop");
+    }
+    count.textContent = onFire ? "×" + chain : "";
+    streakHud.classList.toggle("onFire", onFire);
+    if (onFire && chain > previous) restartHudAnimation(streakHud, previous < threshold ? "ignite" : "bump");
+  }
+
+  function restartHudAnimation(element, className) {
+    element.classList.remove("pop", "ignite", "bump");
+    void element.offsetWidth;
+    element.classList.add(className);
   }
 
   function isCanvasDarkBackground() {
@@ -3538,6 +3597,7 @@
       ? SCORE_SHAKE.perfect + Math.min(swishStreak, 6) * SCORE_SHAKE.perStreak
       : SCORE_SHAKE.basket;
     shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
+    if (wasPerfect) hitStopTimer = swishStreak === getFlameThreshold() ? HIT_STOP.ignite : HIT_STOP.perfect;
     comboText = usedWall || wasPerfect ? 1.5 : 1.0;
     scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain);
     playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak });
@@ -6169,7 +6229,10 @@
     const dt = firstPhysicsFrame || frameSeconds > STALL_FRAME_DT ? 0 : Math.max(0, Math.min(MAX_FRAME_DT, frameSeconds));
     lastTime = now;
     const cpuStart = perfStats ? performance.now() : 0;
-    const advanced = Physics.advanceFixedSteps(physicsAccumulator, dt, MAX_FRAME_DT, updateFixedStep);
+    // Hit-stop only delays fixed steps; the steps themselves are unchanged, so flight stays deterministic.
+    const frozen = Math.min(hitStopTimer, dt);
+    hitStopTimer -= frozen;
+    const advanced = Physics.advanceFixedSteps(physicsAccumulator, dt - frozen, MAX_FRAME_DT, updateFixedStep);
     physicsAccumulator = advanced.accumulator;
     renderAlpha = advanced.alpha;
     updatePresentation(dt);

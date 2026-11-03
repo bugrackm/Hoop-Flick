@@ -287,6 +287,129 @@ body.dark-mode #gameShell {
   font-size: 15px;
 }
 
+.streakHud {
+  --flame-core: #fff0a6;
+  --flame-mid: #ff8a2e;
+  --flame-outer: #c4702c;
+  grid-column: 1 / -1;
+  display: inline-flex;
+  min-height: 30px;
+  padding: 5px 11px 5px 9px;
+  align-items: center;
+  justify-self: start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--hud-pill-radius);
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px rgba(60, 68, 80, 0.08);
+  backdrop-filter: blur(8px);
+  line-height: 1;
+}
+
+.streakHud[hidden] {
+  display: none;
+}
+
+/* Teardrop flame in the skin's flame colours; dim until the streak lights it. */
+.streakFlame {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  margin: 3px 2px 0;
+  border-radius: 50% 0 50% 50%;
+  background: var(--flame-mid);
+  box-shadow: 0 0 0 1.5px var(--flame-outer);
+  opacity: 0.45;
+  transform: rotate(-45deg);
+}
+
+.streakFlame::after {
+  position: absolute;
+  inset: 3.5px 3.5px 2px 2px;
+  border-radius: 50% 0 50% 50%;
+  background: var(--flame-core);
+  content: "";
+}
+
+.streakPips {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.streakPips span {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--flame-outer);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.streakPips span.filled {
+  border-color: var(--flame-outer);
+  background: var(--flame-mid);
+  opacity: 1;
+}
+
+.streakPips span.pop {
+  animation: streakPipPop 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+
+.streakCount {
+  display: none;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.streakHud.onFire {
+  border-color: var(--flame-mid);
+  box-shadow: 0 0 0 1px var(--flame-mid), 0 8px 22px rgba(60, 68, 80, 0.08);
+}
+
+.streakHud.onFire .streakFlame {
+  opacity: 1;
+  animation: streakFlicker 0.5s ease-in-out infinite alternate;
+}
+
+.streakHud.onFire .streakPips {
+  display: none;
+}
+
+.streakHud.onFire .streakCount {
+  display: inline;
+}
+
+.streakHud.ignite {
+  animation: streakIgnite 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+
+.streakHud.bump {
+  animation: streakBump 0.28s ease-out;
+}
+
+@keyframes streakPipPop {
+  0% { transform: scale(0.4); }
+  60% { transform: scale(1.5); }
+  100% { transform: scale(1); }
+}
+
+@keyframes streakFlicker {
+  from { transform: rotate(-45deg) scale(1); }
+  to { transform: rotate(-41deg) scale(1.18); }
+}
+
+@keyframes streakIgnite {
+  0% { transform: scale(0.85); }
+  45% { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+@keyframes streakBump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
 .overlay {
   position: absolute;
   z-index: 5;
@@ -1100,7 +1223,11 @@ p {
     transition: none;
   }
 
-  .timedShotHud.critical {
+  .timedShotHud.critical,
+  .streakHud.ignite,
+  .streakHud.bump,
+  .streakHud.onFire .streakFlame,
+  .streakPips span.pop {
     animation: none;
   }
 }
