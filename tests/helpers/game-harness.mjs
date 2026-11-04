@@ -45,7 +45,7 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
       requestAnimationFrame: fn => { rafs.set(++rafId, fn); return rafId; },
       cancelAnimationFrame: id => rafs.delete(id)
     },
-    document: { getElementById: element, createElement: element, querySelector: () => null, querySelectorAll: () => [], body: element(), documentElement: element() },
+    document: { getElementById: element, createElement: element, createTextNode: text => ({ textContent: String(text) }), querySelector: () => null, querySelectorAll: () => [], body: element(), documentElement: element() },
     localStorage: { getItem: () => null, setItem: noop }
   });
   vm.runInContext(physicsSource, sandbox);

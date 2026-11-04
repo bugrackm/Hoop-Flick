@@ -78,12 +78,38 @@
   const shopDialogCancelButton = document.getElementById("shopDialogCancelButton");
   const shopDialogConfirmButton = document.getElementById("shopDialogConfirmButton");
   const gameOverChallenge = document.getElementById("gameOverChallenge");
+  const gameOverNewBest = document.getElementById("gameOverNewBest");
+  const gameOverBestValue = document.getElementById("gameOverBestValue");
+  const gameOverCoinsValue = document.getElementById("gameOverCoinsValue");
+  const menuCoinValue = document.getElementById("menuCoinValue");
+  const menuBestValue = document.getElementById("menuBestValue");
+  const menuBallIcon = document.getElementById("menuBallIcon");
+  const menuThemeIcon = document.getElementById("menuThemeIcon");
+  const profileBestValue = document.getElementById("profileBestValue");
+  const languageValue = document.getElementById("languageValue");
+  const tipBanner = document.getElementById("tipBanner");
+  const missionsOverlay = document.getElementById("missionsOverlay");
+  const missionsButton = document.getElementById("missionsButton");
+  const missionsBackButton = document.getElementById("missionsBackButton");
+  const missionsCoinBalanceValue = document.getElementById("missionsCoinBalanceValue");
+  const missionsDailyTab = document.getElementById("missionsDailyTab");
+  const missionsBallsTab = document.getElementById("missionsBallsTab");
+  const missionsDailyPanel = document.getElementById("missionsDailyPanel");
+  const missionsBallsPanel = document.getElementById("missionsBallsPanel");
+  const missionsResetText = document.getElementById("missionsResetText");
+  const missionList = document.getElementById("missionList");
+  const missionBallList = document.getElementById("missionBallList");
+  const gameOverMissions = document.getElementById("gameOverMissions");
+  const tipText = document.getElementById("tipText");
+  const replayTutorialButton = document.getElementById("replayTutorialButton");
 
   const STORAGE_KEY = "hoop-flick-best";
   const DARK_MODE_KEY = "hoop-flick-dark-mode";
   const MUTED_KEY = "hoop-flick-muted";
   const HAPTICS_KEY = "hoop-flick-haptics";
   const LANGUAGE_KEY = "hoop-flick-language";
+  // Seen tutorial steps live outside the save record, like the vibration preference.
+  const TUTORIAL_KEY = "hoop-flick-tutorial";
   const BALL_SKIN_KEY = "hoop-flick-ball-skin";
   const THEME_KEY = "hoop-flick-theme";
   const LOCAL_SAVE_KEY = "hoop-flick-save-v4";
@@ -145,6 +171,7 @@
   const Physics = globalThis.HoopFlickPhysics;
   const BallArt = globalThis.HoopFlickBallArt;
   const HoopArt = globalThis.HoopFlickHoopArt;
+  const ThemeArt = globalThis.HoopFlickThemeArt;
   const FLIGHT_PARAMS = Object.freeze({
     gravity: GRAVITY,
     airDrag: AIR_DRAG,
@@ -888,6 +915,24 @@
     galaxy: Object.freeze({ metric: "lifetimePerfects", target: 150, descriptionKey: "challengeGalaxy" })
   });
   const CHALLENGE_SKIN_ORDER = Object.freeze(Object.keys(BALL_CHALLENGES));
+
+  // Daily missions: three per local day (easy, medium, hard), picked from this pool with a
+  // seed from the date, so a day's set is stable across reloads. "sum" metrics add up over the
+  // day, "max" metrics keep the best single run. Targets are [easy, medium, hard].
+  const MISSION_TYPES = Object.freeze({
+    baskets: Object.freeze({ mode: "sum", targets: [15, 30, 50], icon: "◎" }),
+    perfects: Object.freeze({ mode: "sum", targets: [5, 10, 20], icon: "✦" }),
+    bankBaskets: Object.freeze({ mode: "sum", targets: [2, 4, 7], icon: "⇄" }),
+    coins: Object.freeze({ mode: "sum", targets: [3, 6, 10], icon: "●" }),
+    games: Object.freeze({ mode: "sum", targets: [3, 5, 8], icon: "▶" }),
+    runScore: Object.freeze({ mode: "max", targets: null, icon: "★" }),
+    perfectChain: Object.freeze({ mode: "max", targets: [2, 3, 5], icon: "≫" }),
+    ignitions: Object.freeze({ mode: "sum", targets: [1, 2, 4], icon: "♨" })
+  });
+  const MISSION_TYPE_IDS = Object.freeze(Object.keys(MISSION_TYPES));
+  const MISSION_REWARDS = Object.freeze([15, 25, 40]);
+  const MISSION_BONUS_REWARD = 30;
+  const MISSIONS_PER_DAY = 3;
   const THEMES = {
     gym: {
       id: "gym",
@@ -1286,6 +1331,33 @@
     tr: {
       arcadeEyebrow: "ARCADE BASKETBOL",
       tagline: "Çek, bırak ve yükselmeye devam et.",
+      ballsTab: "Toplar",
+      missionsTab: "Görevler",
+      dailyMissions: "Günlük",
+      dailyMissionsTitle: "Günlük Görevler",
+      missionComplete: "Görev tamamlandı",
+      missionBonus: "Bonus: bugünün 3 görevini de topla",
+      missionsReset: "Yeni görevler {time} sonra",
+      hoursMinutes: "{h} sa {m} dk",
+      mission_baskets: "{n} basket at",
+      mission_perfects: "{n} deliksiz atış yap",
+      mission_bankBaskets: "Duvardan sektirerek {n} basket at",
+      mission_coins: "{n} coin topla",
+      mission_games: "{n} oyun oyna",
+      mission_runScore: "Tek oyunda {n} puana ulaş",
+      mission_perfectChain: "Üst üste {n} deliksiz at",
+      mission_ignitions: "Topu {n} kez alev aldır",
+      tip_aim: "Topu geri çek, nişan al ve bırak!",
+      tip_perfect: "Çembere değmeden sok: DELİKSİZ! Seri yaptıkça puan artar.",
+      tip_flame: "Deliksizleri art arda yap, top alev alsın!",
+      tip_wall: "Duvardan sektirerek at: puan ×2!",
+      tip_coin: "Coin'leri topla; yeni toplar ve temalar aç!",
+      tip_timed: "Zamanlı atış! Süre bitmeden basket yap.",
+      tutorialReplay: "Eğitimi Tekrarla",
+      tutorialReady: "bir sonraki oyunda başlar",
+      replay: "Başlat",
+      themesTab: "Temalar",
+      newBest: "YENİ REKOR!",
       play: "Oyna",
       profile: "Profil",
       activePlayTime: "Aktif Oynama Süresi",
@@ -1380,11 +1452,11 @@
       purchased: "Satın alındı",
       chooseTheme: "Tema seç",
       selectedTheme: "Seçili tema",
-      themeGym: "Klasik",
-      themeSunset: "Gün Batımı",
-      themeNeon: "Neon Gece",
-      themeRooftop: "Çatı Sahası",
-      themeMinimal: "Minimal Premium",
+      themeGym: "Okul Salonu",
+      themeSunset: "Sahil",
+      themeNeon: "Atari",
+      themeRooftop: "Gökdelen",
+      themeMinimal: "Defter",
       classicBall: "Klasik Turuncu",
       invertedBall: "Karanlık Ters",
       neonBall: "Siber Neon",
@@ -1463,6 +1535,33 @@
     en: {
       arcadeEyebrow: "ARCADE BASKETBALL",
       tagline: "Drag, release, and keep climbing.",
+      ballsTab: "Balls",
+      missionsTab: "Missions",
+      dailyMissions: "Daily",
+      dailyMissionsTitle: "Daily Missions",
+      missionComplete: "Mission complete",
+      missionBonus: "Bonus: claim all 3 of today's missions",
+      missionsReset: "New missions in {time}",
+      hoursMinutes: "{h} h {m} min",
+      mission_baskets: "Score {n} baskets",
+      mission_perfects: "Make {n} swishes",
+      mission_bankBaskets: "Bank {n} baskets off a wall",
+      mission_coins: "Collect {n} coins",
+      mission_games: "Play {n} games",
+      mission_runScore: "Reach {n} points in one game",
+      mission_perfectChain: "Swish {n} in a row",
+      mission_ignitions: "Set the ball on fire {n} times",
+      tip_aim: "Pull the ball back, aim and let go!",
+      tip_perfect: "Miss the rim for a SWISH! Chains score more.",
+      tip_flame: "Chain swishes to set the ball on fire!",
+      tip_wall: "Bank it off a wall: points ×2!",
+      tip_coin: "Grab coins to unlock balls and themes!",
+      tip_timed: "Timed shot! Score before the clock runs out.",
+      tutorialReplay: "Replay Tutorial",
+      tutorialReady: "starts with your next game",
+      replay: "Start",
+      themesTab: "Themes",
+      newBest: "NEW BEST!",
       play: "Play",
       profile: "Profile",
       activePlayTime: "Active Play Time",
@@ -1557,11 +1656,11 @@
       purchased: "Purchased",
       chooseTheme: "Choose theme",
       selectedTheme: "Selected theme",
-      themeGym: "Classic",
-      themeSunset: "Sunset",
-      themeNeon: "Neon Night",
-      themeRooftop: "Rooftop Court",
-      themeMinimal: "Minimal Premium",
+      themeGym: "School Gym",
+      themeSunset: "Beach",
+      themeNeon: "Arcade",
+      themeRooftop: "Skyline",
+      themeMinimal: "Notebook",
       classicBall: "Classic Orange",
       invertedBall: "Dark Inverted",
       neonBall: "Neon",
@@ -1680,10 +1779,17 @@
   let state = "menu";
   let stats = createDefaultStats();
   let achievementState = createDefaultAchievementState();
+  let missionState = createEmptyMissionState();
+  let missionsTab = "daily";
   let activePlaySegmentStartedAt = null;
   let runShotCount = 0;
   let runBounceBaskets = 0;
   let runIgnitions = 0;
+  let runCoins = 0;
+  const TUTORIAL_TIP_IDS = Object.freeze(["aim", "perfect", "flame", "wall", "coin", "timed"]);
+  const TIP_DURATION = 3.6;
+  const GHOST_CYCLE = 2.9;
+  const tutorial = { seen: new Set(), guide: null, tipQueue: [], tipId: null, tipTimer: null, basketsThisRun: 0 };
   let achievementToastQueue = [];
   let achievementToastEntry = null;
   let achievementToastTimer = null;
@@ -1698,6 +1804,8 @@
   let simulationTime = 0;
   let shake = 0;
   let comboText = 0;
+  // World point of the hoop that was just scored; the feedback text floats up from there.
+  const comboAnchor = { x: WORLD_W * 0.5, y: 0 };
   let perfectChain = 0;
   let swishStreak = 0;
   let lastScoreGain = 1;
@@ -1884,12 +1992,15 @@
 
   function resetGame(toMenu) {
     userPaused = false;
+    clearTips();
+    tutorial.guide = null;
     hitStopTimer = 0;
     settingsOrigin = "menu";
     score = 0;
     runShotCount = 0;
     runBounceBaskets = 0;
     runIgnitions = 0;
+    runCoins = 0;
     runStartBestScore = best;
     highScoreCelebration.eligibleThisRun = runStartBestScore > 0;
     highScoreCelebration.hasCelebratedThisRun = false;
@@ -1956,6 +2067,7 @@
     settingsOverlay.classList.remove("active");
     customizeOverlay.classList.remove("active");
     themeOverlay?.classList.remove("active");
+    missionsOverlay?.classList.remove("active");
     pauseOverlay.classList.remove("active");
     gameOverOverlay.classList.remove("active");
     retryOverlay.classList.remove("active");
@@ -2051,6 +2163,7 @@
     ensureAudio();
     resetGame(false);
     playGameSound("start");
+    beginAimGuide();
   }
 
   function beginGameOver() {
@@ -2070,6 +2183,8 @@
     if (gameOverFinalized) return false;
     gameOverFinalized = true;
     const activeTimeChanged = setGameState("gameover");
+    clearTips();
+    recordMissionProgress({ games: 1, runScore: score });
     if (activeTimeChanged) markSaveDirty();
     airborneTime = 0;
     ball.angularVelocity = 0;
@@ -2077,7 +2192,8 @@
     writeBestScore(best);
     void flushSave();
     bestValue.textContent = String(best);
-    finalScore.textContent = t("score") + " " + score;
+    renderGameOverSummary();
+    renderGameOverMissions();
     renderGameOverChallenge();
     retryOverlay.classList.remove("active");
     gameOverOverlay.classList.add("active");
@@ -2085,6 +2201,14 @@
     playGameSound("gameover");
     triggerHaptic([40, 60, 70], true);
     return true;
+  }
+
+  function renderGameOverSummary() {
+    finalScore.textContent = String(score);
+    finalScore.setAttribute("aria-label", t("score") + " " + score);
+    if (gameOverBestValue) gameOverBestValue.textContent = String(best);
+    if (gameOverCoinsValue) gameOverCoinsValue.textContent = "+" + runCoins;
+    if (gameOverNewBest) gameOverNewBest.hidden = !(score > 0 && score > runStartBestScore);
   }
 
   // Game over points at the locked challenge ball closest to done: a reason for one more run.
@@ -2161,6 +2285,9 @@
   function updateScore() {
     scoreValue.textContent = String(score);
     bestValue.textContent = String(Math.max(best, score));
+    const shownBest = String(Math.max(best, score));
+    if (menuBestValue) menuBestValue.textContent = shownBest;
+    if (profileBestValue) profileBestValue.textContent = shownBest;
   }
 
   function getHoopWidth() {
@@ -2513,6 +2640,7 @@
     };
     coinTargetsRemaining = 0;
     coinSpawnDue = false;
+    if (state === "playing") showTip("coin");
     return true;
   }
 
@@ -2574,6 +2702,8 @@
     if (!activeCoin) return false;
     activeCoin = null;
     coins = Math.min(Number.MAX_SAFE_INTEGER, normalizeCoins(coins) + 1);
+    runCoins += 1;
+    recordMissionProgress({ coins: 1 });
     stats.worldCoinsCollected = addSafeStat(stats.worldCoinsCollected, 1);
     scheduleNextCoin();
     coinFeedback = {
@@ -2584,6 +2714,7 @@
     };
     emitCoinCollectEffect(position.x, position.y);
     syncEconomyBalances();
+    if (coinHud) restartHudAnimation(coinHud, "bump");
     requestSave(false);
     return true;
   }
@@ -2831,6 +2962,7 @@
     timedShotActive = true;
     timedShotAwaitingShotResult = false;
     syncTimedShotHud(true);
+    showTip("timed");
     return true;
   }
 
@@ -2960,6 +3092,7 @@
 
   function updatePresentation(dt) {
     ballArtClock += dt;
+    updateTutorial(dt);
     for (const hoop of hoops) {
       hoop.entranceTimer = Math.min(1, (hoop.entranceTimer ?? hoop.spawnProgress ?? 1) + dt / HOOP_SPAWN_DURATION);
       hoop.spawnProgress = hoop.entranceTimer;
@@ -3937,6 +4070,15 @@
     const ignited = wasPerfect && swishStreak === getFlameThreshold();
     recordBasketStats(wasPerfect, usedWall, lastScoreGain);
     const achievementUnlocked = recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot, ignited);
+    onTutorialBasket(wasPerfect, usedWall, ignited);
+    recordMissionProgress({
+      baskets: 1,
+      perfects: wasPerfect ? 1 : 0,
+      bankBaskets: usedWall ? 1 : 0,
+      ignitions: ignited ? 1 : 0,
+      runScore: score,
+      perfectChain: swishStreak
+    });
     if (achievementUnlocked) requestSave(true);
     else requestSave(false);
     if (
@@ -3957,7 +4099,9 @@
       : SCORE_SHAKE.basket;
     shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
     if (wasPerfect) hitStopTimer = ignited ? HIT_STOP.ignite : HIT_STOP.perfect;
-    comboText = usedWall || wasPerfect ? 1.5 : 1.0;
+    comboText = usedWall || wasPerfect ? 1.1 : 0.85;
+    comboAnchor.x = hoop.x;
+    comboAnchor.y = hoop.y;
     scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain);
     playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak });
     triggerHaptic(!wasPerfect ? 16 : swishStreak >= 3 ? [12, 30, 12, 30, 24] : [12, 40, 18], true);
@@ -4242,9 +4386,12 @@
     ctx.scale(scale, scale);
     ctx.translate(0, -cameraY);
 
-    drawAmbient();
-    drawWalls();
-    drawCurrentScore();
+    if (ThemeArt) {
+      drawThemeLayers(sx, sy);
+    } else {
+      drawAmbient();
+      drawWalls();
+    }
     for (const hoop of hoops) drawHoopMotionPath(hoop);
     for (const hoop of hoops) drawHoop(hoop);
     drawActiveCoin();
@@ -4259,6 +4406,7 @@
       const currentHoop = getHoopById(currentHoopId);
       if (currentHoop) drawHoopFront(currentHoop);
     }
+    if (tutorial.guide) drawTutorialGuide();
     if (state === "menu") drawHint();
     if (comboText > 0) drawCombo();
     drawCoinFeedback();
@@ -4399,6 +4547,171 @@
     target.restore();
   }
 
+  // Theme backdrop from themeArt.js in three cached layers:
+  // sky (screen-fixed), far (parallax tile) and the two walls (world-anchored tiles).
+  // Caches are rebuilt only when the theme, mode or canvas size changes.
+  const BACKDROP_MAX_DPR = 2;
+  const BACKDROP_SIDE_LIMIT = 160;
+  const BACKDROP_SHAKE_MARGIN = 10;
+  const themeLayerCache = { key: "", bounds: null, sky: null, far: null, farHeight: 0, wallLeft: null, wallRight: null, parallax: 0.5 };
+
+  function getVisibleWorldBounds() {
+    const x0 = Math.max(-BACKDROP_SIDE_LIMIT, Math.floor(-offsetX / scale) - BACKDROP_SHAKE_MARGIN);
+    const x1 = Math.min(WORLD_W + BACKDROP_SIDE_LIMIT, Math.ceil((viewW - offsetX) / scale) + BACKDROP_SHAKE_MARGIN);
+    const top = Math.floor(-offsetY / scale) - BACKDROP_SHAKE_MARGIN;
+    const height = Math.ceil(viewH / scale) + BACKDROP_SHAKE_MARGIN * 2;
+    return { x0, x1, top, height };
+  }
+
+  function makeLayerCanvas(worldWidth, worldHeight, pixelScale, paint) {
+    const layer = document.createElement("canvas");
+    layer.width = Math.max(1, Math.round(worldWidth * pixelScale));
+    layer.height = Math.max(1, Math.round(worldHeight * pixelScale));
+    const layerCtx = layer.getContext("2d");
+    if (!layerCtx) return null;
+    layerCtx.setTransform(layer.width / worldWidth, 0, 0, layer.height / worldHeight, 0, 0);
+    paint(layerCtx);
+    return layer;
+  }
+
+  function getThemeArtId() {
+    return THEMES[selectedThemeId] ? selectedThemeId : "gym";
+  }
+
+  function ensureThemeLayers() {
+    const bounds = getVisibleWorldBounds();
+    const themeId = getThemeArtId();
+    const bgScale = scale * Math.min(dpr, BACKDROP_MAX_DPR);
+    const wallScale = scale * dpr;
+    const key = [themeId, darkMode, bgScale.toFixed(4), wallScale.toFixed(4), bounds.x0, bounds.x1, bounds.top, bounds.height].join("|");
+    const cache = themeLayerCache;
+    if (cache.key === key) return cache;
+    const width = bounds.x1 - bounds.x0;
+    const farTile = ThemeArt.FAR_TILE_H;
+    const wallTile = ThemeArt.WALL_TILE_H;
+    const wallX = ThemeArt.WALL_X;
+    cache.sky = makeLayerCanvas(width, bounds.height, bgScale, (layerCtx) => {
+      layerCtx.translate(-bounds.x0, 0);
+      ThemeArt.paintSky(layerCtx, themeId, darkMode, bounds.x0, bounds.x1, bounds.height);
+    });
+    cache.far = makeLayerCanvas(width, farTile, bgScale, (layerCtx) => {
+      layerCtx.translate(-bounds.x0, 0);
+      ThemeArt.paintFar(layerCtx, themeId, darkMode, bounds.x0, bounds.x1, farTile);
+    });
+    cache.farHeight = farTile;
+    const leftWidth = wallX + 2 - bounds.x0;
+    cache.wallLeft = makeLayerCanvas(leftWidth, wallTile, wallScale, (layerCtx) => {
+      layerCtx.translate(-bounds.x0, 0);
+      ThemeArt.paintWall(layerCtx, themeId, darkMode, "left", bounds.x0, bounds.x1, wallTile);
+    });
+    const rightStart = WORLD_W - wallX - 2;
+    cache.wallRight = makeLayerCanvas(bounds.x1 - rightStart, wallTile, wallScale, (layerCtx) => {
+      layerCtx.translate(-rightStart, 0);
+      ThemeArt.paintWall(layerCtx, themeId, darkMode, "right", bounds.x0, bounds.x1, wallTile);
+    });
+    cache.leftX = bounds.x0;
+    cache.rightX = rightStart;
+    cache.parallax = ThemeArt.getParallax(themeId);
+    cache.bounds = bounds;
+    cache.key = key;
+    const palette = ThemeArt.getPalette(themeId, darkMode);
+    const edgeColor = palette.sky[palette.sky.length - 1];
+    if (gameShell && edgeColor) gameShell.style.backgroundColor = edgeColor;
+    return cache;
+  }
+
+  // Wall tiles are opaque; each tile top is snapped to a device pixel and advances by the
+  // tile's exact pixel height, so neighbouring tiles meet without a seam line.
+  function drawWallTiles(image, x, screenTop, screenBottom, sx, sy) {
+    if (!image) return;
+    const deviceScale = scale * dpr;
+    const advance = image.height / deviceScale;
+    const toWorldY = (deviceY) => (deviceY / dpr - sy) / scale + cameraY;
+    const toDeviceY = (worldY) => dpr * (sy + scale * (worldY - cameraY));
+    const deviceX = Math.round(dpr * (sx + scale * x));
+    const worldX = (deviceX / dpr - sx) / scale;
+    const worldWidth = image.width / deviceScale;
+    let tileTop = Math.floor(screenTop / advance) * advance;
+    let deviceTop = Math.round(toDeviceY(tileTop));
+    for (let guard = 0; guard < 12; guard += 1) {
+      const worldTop = toWorldY(deviceTop);
+      if (worldTop > screenBottom) break;
+      ctx.drawImage(image, worldX, worldTop, worldWidth, advance);
+      deviceTop += image.height;
+    }
+  }
+
+  function drawThemeLayers(sx, sy) {
+    const layers = ensureThemeLayers();
+    const bounds = layers.bounds;
+    const screenTop = cameraY + bounds.top;
+    const screenBottom = screenTop + bounds.height;
+    const width = bounds.x1 - bounds.x0;
+    if (layers.sky) ctx.drawImage(layers.sky, bounds.x0, screenTop, width, bounds.height);
+    if (layers.far) {
+      const tile = layers.farHeight;
+      const base = cameraY * (1 - layers.parallax);
+      let y = base + Math.floor((screenTop - base) / tile) * tile;
+      for (let guard = 0; guard < 6 && y < screenBottom; guard += 1, y += tile) {
+        ctx.drawImage(layers.far, bounds.x0, y, width, tile);
+      }
+    }
+    drawWallTiles(layers.wallLeft, layers.leftX, screenTop, screenBottom, sx, sy);
+    drawWallTiles(layers.wallRight, layers.rightX, screenTop, screenBottom, sx, sy);
+  }
+
+  // Small static picture of a theme (sky, far layer, walls, one hoop and the player's ball)
+  // for the theme shop, the menu tile and the purchase dialog.
+  function drawThemePreviewCanvas(canvasElement, themeId) {
+    if (!ThemeArt || !canvasElement) return;
+    // Layout size, not getBoundingClientRect: dialogs open from a scaled-down transform.
+    const cssWidth = canvasElement.offsetWidth > 0 ? canvasElement.offsetWidth : Number(canvasElement.dataset.width) || 160;
+    const cssHeight = canvasElement.offsetHeight > 0 ? canvasElement.offsetHeight : Number(canvasElement.dataset.height) || 120;
+    const previewDpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvasElement.width = Math.round(cssWidth * previewDpr);
+    canvasElement.height = Math.round(cssHeight * previewDpr);
+    const previewCtx = canvasElement.getContext("2d");
+    if (!previewCtx) return;
+    const theme = THEMES[themeId] || THEMES.gym;
+    // Show the whole play column; tall previews zoom in a little so walls stay visible.
+    const s = Math.max(cssWidth / WORLD_W, cssHeight / 520) * previewDpr;
+    const worldWidth = canvasElement.width / s;
+    const worldHeight = canvasElement.height / s;
+    const x0 = (WORLD_W - worldWidth) * 0.5;
+    const x1 = x0 + worldWidth;
+    previewCtx.setTransform(s, 0, 0, s, -x0 * s, 0);
+    ThemeArt.paintSky(previewCtx, theme.id, darkMode, x0, x1, worldHeight);
+    previewCtx.save();
+    previewCtx.translate(0, -120);
+    ThemeArt.paintFar(previewCtx, theme.id, darkMode, x0, x1, ThemeArt.FAR_TILE_H);
+    previewCtx.restore();
+    ThemeArt.paintWall(previewCtx, theme.id, darkMode, "left", x0, x1, ThemeArt.WALL_TILE_H);
+    ThemeArt.paintWall(previewCtx, theme.id, darkMode, "right", x0, x1, ThemeArt.WALL_TILE_H);
+    if (HoopArt && BallArt) {
+      const palette = (theme.hoopArt || THEMES.gym.hoopArt)[darkMode ? "dark" : "light"];
+      const skin = getSelectedBallSkin();
+      const preset = BALL_EFFECT_PRESETS[skin.effectPreset] || BALL_EFFECT_PRESETS.classic;
+      const heatColors = getFlameStyle(preset, darkMode).colors;
+      const hoopOptions = {
+        halfWidth: HOOP_WIDTH * 0.5, swing: 0, stretch: 0, ripple: -1, rimScaleX: 1, rimScaleY: 1,
+        flash: 0, flashColor: "#ffffff", heat: 0, heatColors, darkBackground: darkMode, board: null
+      };
+      const hoopX = WORLD_W * 0.5;
+      const hoopY = worldHeight * 0.5 - 6;
+      previewCtx.save();
+      previewCtx.translate(hoopX, hoopY);
+      HoopArt.drawHoopBack(previewCtx, palette, hoopOptions);
+      previewCtx.save();
+      previewCtx.translate(0, NET_REST_Y - 4);
+      BallArt.drawBall(previewCtx, skin.art, {
+        radius: BALL_RADIUS, rotation: -0.35, time: 0, heat: 0, heatColors, flash: 0, darkBackground: darkMode, look: { x: 0.4, y: -0.3 }
+      });
+      previewCtx.restore();
+      HoopArt.drawHoopFront(previewCtx, palette, hoopOptions);
+      previewCtx.restore();
+    }
+  }
+
   function drawAmbientRing(target, x, y, radius, alpha) {
     target.save();
     target.globalAlpha *= alpha;
@@ -4497,19 +4810,6 @@
     ctx.moveTo(WORLD_W - WALL_INSET + 4, top);
     ctx.lineTo(WORLD_W - WALL_INSET + 4, top + height);
     ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawCurrentScore() {
-    if (state !== "playing" && state !== "paused" && state !== "pause-settings" && state !== "retry" && state !== "gameover") return;
-    const colors = getCanvasTheme();
-    ctx.save();
-    ctx.globalAlpha = 0.11;
-    ctx.fillStyle = colors.ink;
-    ctx.font = "900 156px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(score), WORLD_W * 0.5, cameraY + WORLD_H * 0.28);
     ctx.restore();
   }
 
@@ -4848,11 +5148,11 @@
     return ballSkinImages[skin.id];
   }
 
-  function predictShot(pull, velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS)) {
-    // Mirror the launch-net walls so a sideways shot's dots bounce back like the ball will.
+  // Mirror the launch-net walls so a sideways shot's dots bounce back like the ball will.
+  function makeLaunchNetAfterStep() {
     const launchHoop = getHoopById(currentHoopId);
     let insideNet = Boolean(launchHoop);
-    const afterStep = launchHoop ? (body, dt) => {
+    return launchHoop ? (body, dt) => {
       if (!insideNet) return body;
       const wall = getLaunchNetWallStep(launchHoop, body, dt);
       if (wall.left) {
@@ -4861,11 +5161,14 @@
       }
       return { ...body, x: wall.x, vx: wall.vx, vy: wall.vy };
     } : null;
+  }
+
+  function predictShot(pull, velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS)) {
     return Physics.predictTrajectory(ball, velocity, FLIGHT_PARAMS, {
       dotSteps: TRAJECTORY_DOT_STEPS,
       pointCount: Math.round(7 + pull.ratio * 6),
       maxPoints: 15,
-      afterStep
+      afterStep: makeLaunchNetAfterStep()
     });
   }
 
@@ -4915,6 +5218,281 @@
     ctx.arc(ball.x, ball.y, ball.r + 11, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * pull.ratio);
     ctx.stroke();
     ctx.restore();
+  }
+
+  // ---------- Tutorial: ghost-hand aim guide and one-time tips ----------
+
+  function readTutorialSeen() {
+    try {
+      const raw = localStorage.getItem(TUTORIAL_KEY);
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((id) => TUTORIAL_TIP_IDS.includes(id)) : [];
+    } catch {
+      return null;
+    }
+  }
+
+  function writeTutorialSeen() {
+    try {
+      localStorage.setItem(TUTORIAL_KEY, JSON.stringify([...tutorial.seen]));
+    } catch {
+      // Private mode: the tutorial simply shows again next time.
+    }
+  }
+
+  // Players who already have a score or stats skip the tutorial on their first boot of this version.
+  function initTutorial() {
+    const stored = readTutorialSeen();
+    if (stored !== null) {
+      tutorial.seen = new Set(stored);
+      return;
+    }
+    const normalized = normalizeStats(stats);
+    const veteran = best > 0 || normalized.lifetimeScore > 0 || normalized.perfectBaskets > 0;
+    tutorial.seen = new Set(veteran ? TUTORIAL_TIP_IDS : []);
+    writeTutorialSeen();
+  }
+
+  function replayTutorial() {
+    if (!gameBooted) return;
+    ensureAudio();
+    playGameSound("button");
+    tutorial.seen.clear();
+    writeTutorialSeen();
+    if (replayTutorialButton) replayTutorialButton.classList.add("done");
+    syncControlLabels();
+  }
+
+  function hasSeenTip(id) {
+    return tutorial.seen.has(id);
+  }
+
+  function markTipSeen(id) {
+    if (tutorial.seen.has(id)) return;
+    tutorial.seen.add(id);
+    writeTutorialSeen();
+  }
+
+  function showTip(id, sticky) {
+    if (hasSeenTip(id) || tutorial.tipId === id || tutorial.tipQueue.some((entry) => entry.id === id)) return;
+    tutorial.tipQueue.push({ id, sticky: Boolean(sticky) });
+    showNextTip();
+  }
+
+  function showNextTip() {
+    if (!tipBanner || tutorial.tipId !== null || tutorial.tipQueue.length === 0) return;
+    const entry = tutorial.tipQueue.shift();
+    tutorial.tipId = entry.id;
+    if (!entry.sticky) markTipSeen(entry.id);
+    tipText.textContent = t("tip_" + entry.id);
+    tipBanner.classList.remove("active");
+    void tipBanner.offsetWidth;
+    tipBanner.classList.add("active");
+    if (!entry.sticky) tutorial.tipTimer = window.setTimeout(hideTip, TIP_DURATION * 1000);
+  }
+
+  function hideTip() {
+    if (tutorial.tipTimer !== null) window.clearTimeout(tutorial.tipTimer);
+    tutorial.tipTimer = null;
+    tutorial.tipId = null;
+    if (tipBanner) tipBanner.classList.remove("active");
+    if (state === "playing") window.setTimeout(showNextTip, 260);
+  }
+
+  // A paused game freezes the tip on screen; it gets its full time again after resuming.
+  function pauseTipTimer() {
+    if (tutorial.tipTimer === null) return;
+    window.clearTimeout(tutorial.tipTimer);
+    tutorial.tipTimer = null;
+  }
+
+  function resumeTipTimer() {
+    if (tutorial.tipId && tutorial.tipId !== "aim" && tutorial.tipTimer === null) {
+      tutorial.tipTimer = window.setTimeout(hideTip, TIP_DURATION * 1000);
+    }
+  }
+
+  function clearTips() {
+    tutorial.tipQueue = [];
+    if (tutorial.tipTimer !== null) window.clearTimeout(tutorial.tipTimer);
+    tutorial.tipTimer = null;
+    tutorial.tipId = null;
+    if (tipBanner) tipBanner.classList.remove("active");
+  }
+
+  function syncTipText() {
+    if (tutorial.tipId && tipText) tipText.textContent = t("tip_" + tutorial.tipId);
+  }
+
+  // Search a pull that drops the ball cleanly into the first target, so the ghost hand
+  // demonstrates a shot that really works: same integrator as the real flight, and the path
+  // must clear both rim points by a margin (a rim touch could bounce out).
+  function findGhostPull(target) {
+    let bestPull = null;
+    let bestScore = Infinity;
+    const towardX = Math.sign(target.x - ball.x) || 1;
+    const rimPoints = [hoopToWorld(target, -target.w * 0.5, 0), hoopToWorld(target, target.w * 0.5, 0)];
+    const clearance = BALL_RADIUS + RIM_RADIUS + 3;
+    for (let ratio = 0.5; ratio <= 1.0001; ratio += 0.05) {
+      for (let degrees = 40; degrees <= 88; degrees += 2) {
+        const angle = degrees * Math.PI / 180;
+        const len = MAX_PULL * ratio;
+        const pull = { x: Math.cos(angle) * len * towardX, y: -Math.sin(angle) * len, len, ratio, power: 1 };
+        const velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS);
+        const flight = Physics.predictTrajectory(ball, velocity, FLIGHT_PARAMS, {
+          dotSteps: 1, pointCount: 220, maxPoints: 220, afterStep: makeLaunchNetAfterStep()
+        });
+        const points = flight.points;
+        let entryIndex = -1;
+        let entryX = 0;
+        let clear = true;
+        for (let i = 1; i < points.length; i += 1) {
+          const point = points[i];
+          for (const rim of rimPoints) {
+            if (Math.hypot(point.x - rim.x, point.y - rim.y) < clearance) clear = false;
+          }
+          if (!clear) break;
+          const previous = points[i - 1];
+          if (previous.y < target.y && point.y >= target.y) {
+            const k = (target.y - previous.y) / (point.y - previous.y);
+            entryX = previous.x + (point.x - previous.x) * k;
+            entryIndex = i;
+            break;
+          }
+          // Falling while still below the rim line: it never reached the target height.
+          if (point.y > previous.y && point.y > target.y) break;
+          // Rising under the target would hit its net from below.
+          const local = worldToHoop(target, point.x, point.y);
+          if (local.y > 0 && local.y < NET_REST_Y + 34 && Math.abs(local.x) < target.w * 0.5 + BALL_RADIUS + 2) {
+            clear = false;
+            break;
+          }
+        }
+        if (!clear || entryIndex < 0) continue;
+        const miss = Math.abs(entryX - target.x) + Math.abs(ratio - 0.78) * 12;
+        if (miss < bestScore) {
+          bestScore = miss;
+          bestPull = { pull, points: points.filter((_, index) => index % 2 === 0 && index <= entryIndex + 8) };
+        }
+      }
+    }
+    return bestPull;
+  }
+
+  function beginAimGuide() {
+    tutorial.basketsThisRun = 0;
+    if (hasSeenTip("aim")) {
+      tutorial.guide = null;
+      return;
+    }
+    replayTutorialButton?.classList.remove("done");
+    const target = getHoopById(targetHoopId);
+    const ghost = target ? findGhostPull(target) : null;
+    tutorial.guide = ghost ? { clock: 0, pull: ghost.pull, flight: ghost.points } : { clock: 0, pull: null, flight: [] };
+    showTip("aim", true);
+  }
+
+  function completeAimGuide() {
+    if (!tutorial.guide && hasSeenTip("aim")) return;
+    tutorial.guide = null;
+    markTipSeen("aim");
+    if (tutorial.tipId === "aim") hideTip();
+  }
+
+  function onTutorialBasket(wasPerfect, usedWall, ignitedNow) {
+    tutorial.basketsThisRun += 1;
+    completeAimGuide();
+    showTip("perfect");
+    if (wasPerfect && (ignitedNow || tutorial.basketsThisRun >= 2)) showTip("flame");
+    if (usedWall) markTipSeen("wall");
+    else if (tutorial.basketsThisRun >= 4) showTip("wall");
+  }
+
+  function updateTutorial(dt) {
+    if (tutorial.guide) tutorial.guide.clock = (tutorial.guide.clock + dt) % GHOST_CYCLE;
+  }
+
+  function easeInOut(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) * 0.5;
+  }
+
+  function drawTutorialGuide() {
+    const guide = tutorial.guide;
+    if (!guide || state !== "playing" || !ball.held || drag || !guide.pull) return;
+    const time = guide.clock;
+    const colors = getCanvasTheme();
+    const pull = guide.pull;
+    const dragK = time < 0.35 ? 0 : time < 1.25 ? easeInOut((time - 0.35) / 0.9) : time < 1.75 ? 1 : 0;
+    const handAlpha = time < 0.3 ? time / 0.3 : time < 1.75 ? 1 : time < 2.05 ? 1 - (time - 1.75) / 0.3 : 0;
+    ctx.save();
+    if (dragK > 0.05) {
+      const partial = { x: pull.x * dragK, y: pull.y * dragK, len: pull.len * dragK, ratio: pull.ratio * dragK, power: 1 };
+      ctx.globalAlpha = 0.8;
+      drawTrajectoryPoints(predictShot(partial), partial.ratio, colors);
+    }
+    // After the release a ghost ball flies the real path.
+    if (time >= 1.75 && guide.flight.length > 0) {
+      const index = Math.floor((time - 1.75) / (2 * Physics.FIXED_DT));
+      const point = guide.flight[Math.min(index, guide.flight.length - 1)];
+      if (index < guide.flight.length) {
+        ctx.globalAlpha = 0.42;
+        ctx.fillStyle = colors.ink;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    if (handAlpha > 0.01) {
+      // The finger moves opposite to the pull, exactly like a real drag.
+      const fingerX = ball.x - pull.x * dragK;
+      const fingerY = ball.y - pull.y * dragK;
+      drawGhostHand(fingerX, fingerY + 4, time > 0.2 && time < 1.75, handAlpha);
+    }
+  }
+
+  function drawGhostHand(x, y, pressed, alpha) {
+    const ink = "#22192b";
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (pressed) {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, 15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.translate(x, y);
+    ctx.rotate(-0.42);
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = ink;
+    const shape = () => {
+      ctx.beginPath();
+      roundRectPath(ctx, -6, -2, 12, 34, 6);
+      roundRectPath(ctx, -14, 20, 30, 30, 11);
+      roundRectPath(ctx, -21, 24, 12, 20, 6);
+    };
+    shape();
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    shape();
+    ctx.fill();
+    ctx.fillStyle = "#e6dccd";
+    ctx.beginPath();
+    roundRectPath(ctx, 6, 26, 9, 22, 5);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function roundRectPath(target, x, y, w, h, r) {
+    target.moveTo(x + r, y);
+    target.arcTo(x + w, y, x + w, y + h, r);
+    target.arcTo(x + w, y + h, x, y + h, r);
+    target.arcTo(x, y + h, x, y, r);
+    target.arcTo(x, y, x + w, y, r);
+    target.closePath();
   }
 
   function drawParticles() {
@@ -5045,21 +5623,40 @@
     ctx.restore();
   }
 
+  // Screen-space line just under the HUD block, for the short "new best" banner.
+  const COMBO_TEXT_Y = 214;
+  const CANVAS_UI_FONT = '"Nunito", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+  // Canvas text in the UI's sticker style: ink outline under a flat fill, hard drop below.
+  function drawStickerText(text, x, y, fill, outline = 7) {
+    const drop = outline * 0.5;
+    ctx.lineJoin = "round";
+    ctx.lineWidth = outline;
+    ctx.strokeStyle = "#22192b";
+    ctx.fillStyle = "#22192b";
+    ctx.fillText(text, x, y + drop);
+    ctx.strokeText(text, x, y + drop);
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, x, y);
+  }
+
+  // Small sticker text just above the hoop that was scored: the player's eye is already there,
+  // and it stays well below the next target (at least ~150 units higher) so it never hides it.
   function drawCombo() {
-    const colors = getCanvasTheme();
-    const duration = lastWasPerfect || lastWasBounce ? 1.5 : 1;
+    const duration = lastWasPerfect || lastWasBounce ? 1.1 : 0.85;
     const progress = 1 - clamp(comboText / duration, 0, 1);
-    const pop = Math.sin(clamp(progress * 1.8, 0, 1) * Math.PI);
-    const streakEmphasis = lastWasPerfect ? Math.min(swishStreak, 8) * 0.8 : 0;
+    const pop = Math.sin(clamp(progress * 3, 0, 1) * Math.PI);
+    const streakEmphasis = lastWasPerfect ? Math.min(swishStreak, 6) * 0.5 : 0;
     ctx.save();
-    ctx.translate(WORLD_W * 0.5, cameraY + 112);
-    ctx.globalAlpha = Math.min(1, comboText * 1.4);
-    ctx.fillStyle = lastWasBounce ? "#f47b20" : colors.ink;
-    ctx.shadowColor = lastWasPerfect ? "rgba(255, 158, 75, 0.48)" : "transparent";
-    ctx.shadowBlur = lastWasPerfect ? 8 + streakEmphasis : 0;
-    ctx.font = "850 " + (24 + streakEmphasis + pop * 4) + "px system-ui, sans-serif";
+    ctx.font = "900 " + (15 + streakEmphasis + pop * 3) + "px " + CANVAS_UI_FONT;
     ctx.textAlign = "center";
-    ctx.fillText(scoreFeedbackText, 0, -comboText * 10);
+    const halfWidth = ctx.measureText(scoreFeedbackText).width * 0.5 + 6;
+    const minX = WALL_INSET + halfWidth;
+    const maxX = WORLD_W - WALL_INSET - halfWidth;
+    const x = minX < maxX ? clamp(comboAnchor.x, minX, maxX) : WORLD_W * 0.5;
+    ctx.globalAlpha = Math.min(1, comboText * 3);
+    drawStickerText(scoreFeedbackText, x, comboAnchor.y - 24 - progress * 16, lastWasBounce ? "#ff8a1f" : lastWasPerfect ? "#ffc531" : "#ffffff", 5);
     ctx.restore();
   }
 
@@ -5088,15 +5685,12 @@
 
     if (elapsed < NEW_HIGH_SCORE_DURATION) {
       ctx.save();
-      ctx.translate(WORLD_W * 0.5, 164);
+      ctx.translate(WORLD_W * 0.5, COMBO_TEXT_Y);
       ctx.globalAlpha = Math.min(1, remaining * 1.4);
-      ctx.fillStyle = colors.ink;
-      ctx.shadowColor = darkMode ? "rgba(0, 0, 0, 0.48)" : "rgba(255, 255, 255, 0.7)";
-      ctx.shadowBlur = 7;
-      ctx.font = "850 " + (24 + pop * 4) + "px system-ui, sans-serif";
+      ctx.font = "900 " + (19 + pop * 3) + "px " + CANVAS_UI_FONT;
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
-      ctx.fillText(t("newHighScore"), 0, -remaining * 8);
+      drawStickerText(t("newHighScore"), 0, -remaining * 8, "#ffc531", 5);
       ctx.restore();
     }
 
@@ -5500,6 +6094,330 @@
     return unlocked;
   }
 
+  // ---------- Daily missions ----------
+
+  function createEmptyMissionState() {
+    return { day: "", missions: [], bonusClaimed: false };
+  }
+
+  function hashString(text) {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function makeSeededRandom(seed) {
+    let value = seed || 1;
+    return () => {
+      value = (Math.imul(value ^ (value >>> 15), 2246822507) + 0x9e3779b9) >>> 0;
+      value ^= value >>> 13;
+      return (value >>> 0) / 4294967296;
+    };
+  }
+
+  function roundToFive(value) {
+    return Math.max(5, Math.round(value / 5) * 5);
+  }
+
+  // Score missions follow the player's own best so they stay reachable but not trivial.
+  function getMissionTarget(type, tier) {
+    if (type === "runScore") {
+      const base = Math.max(best, 0);
+      const scales = [0.35, 0.6, 0.85];
+      const floors = [15, 25, 40];
+      const caps = [150, 250, 400];
+      return clamp(roundToFive(base * scales[tier]), floors[tier], caps[tier]);
+    }
+    return MISSION_TYPES[type].targets[tier];
+  }
+
+  function generateDailyMissions(dayKey) {
+    const randomFor = makeSeededRandom(hashString("hoop-flick|" + dayKey));
+    const pool = [...MISSION_TYPE_IDS];
+    const missions = [];
+    for (let tier = 0; tier < MISSIONS_PER_DAY && pool.length > 0; tier += 1) {
+      const index = Math.floor(randomFor() * pool.length);
+      const type = pool.splice(index, 1)[0];
+      missions.push({ type, tier, target: getMissionTarget(type, tier), reward: MISSION_REWARDS[tier], progress: 0, claimed: false });
+    }
+    return { day: dayKey, missions, bonusClaimed: false };
+  }
+
+  function normalizeMissionState(value) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+    const day = source ? normalizeLoginDay(source.day) : null;
+    if (!source || !day || !Array.isArray(source.missions)) return createEmptyMissionState();
+    const missions = [];
+    for (const [tier, entry] of source.missions.slice(0, MISSIONS_PER_DAY).entries()) {
+      if (!entry || typeof entry.type !== "string" || !Object.hasOwn(MISSION_TYPES, entry.type)) return createEmptyMissionState();
+      const target = Number.isSafeInteger(entry.target) && entry.target > 0 ? entry.target : getMissionTarget(entry.type, tier);
+      const progress = Number.isSafeInteger(entry.progress) && entry.progress >= 0 ? Math.min(entry.progress, target) : 0;
+      missions.push({
+        type: entry.type,
+        tier,
+        target,
+        reward: MISSION_REWARDS[tier],
+        progress,
+        claimed: entry.claimed === true && progress >= target
+      });
+    }
+    const allClaimed = missions.length === MISSIONS_PER_DAY && missions.every((mission) => mission.claimed);
+    return { day, missions, bonusClaimed: source.bonusClaimed === true && allClaimed };
+  }
+
+  function serializeMissionState() {
+    return {
+      day: missionState.day,
+      missions: missionState.missions.map((mission) => ({
+        type: mission.type, target: mission.target, progress: mission.progress, claimed: mission.claimed
+      })),
+      bonusClaimed: missionState.bonusClaimed
+    };
+  }
+
+  // Rolls the set over at local midnight; returns true when a new day's set was created.
+  function ensureDailyMissions(date) {
+    const today = getLocalLoginDay(date);
+    if (missionState.day === today && missionState.missions.length === MISSIONS_PER_DAY) return false;
+    // A clock set back must not hand out a fresh set: keep the newer day's missions.
+    const savedOrdinal = getLoginDayOrdinal(missionState.day);
+    if (savedOrdinal !== null && savedOrdinal > getLoginDayOrdinal(today) && missionState.missions.length === MISSIONS_PER_DAY) return false;
+    missionState = generateDailyMissions(today);
+    return true;
+  }
+
+  function isMissionComplete(mission) {
+    return mission.progress >= mission.target;
+  }
+
+  function getClaimableMissionCount() {
+    let count = missionState.missions.filter((mission) => isMissionComplete(mission) && !mission.claimed).length;
+    if (canClaimMissionBonus()) count += 1;
+    return count;
+  }
+
+  function canClaimMissionBonus() {
+    return !missionState.bonusClaimed
+      && missionState.missions.length === MISSIONS_PER_DAY
+      && missionState.missions.every((mission) => mission.claimed);
+  }
+
+  // Feeds gameplay events into today's missions. Returns true when anything changed.
+  function recordMissionProgress(values) {
+    if (ensureDailyMissions()) syncMissionUi();
+    let changed = false;
+    for (const mission of missionState.missions) {
+      if (!Object.hasOwn(values, mission.type) || isMissionComplete(mission)) continue;
+      const value = values[mission.type];
+      const next = MISSION_TYPES[mission.type].mode === "max"
+        ? Math.max(mission.progress, value)
+        : mission.progress + value;
+      const clamped = Math.min(mission.target, Math.max(0, Math.floor(next)));
+      if (clamped === mission.progress) continue;
+      mission.progress = clamped;
+      changed = true;
+      if (isMissionComplete(mission)) queueMissionToast(mission);
+    }
+    if (changed) syncMissionUi();
+    return changed;
+  }
+
+  function claimMission(index) {
+    const mission = missionState.missions[index];
+    if (!mission || mission.claimed || !isMissionComplete(mission)) return false;
+    mission.claimed = true;
+    coins = Math.min(Number.MAX_SAFE_INTEGER, normalizeCoins(coins) + mission.reward);
+    ensureAudio();
+    playGameSound("purchase");
+    syncEconomyBalances();
+    syncMissionUi();
+    requestSave(true);
+    return true;
+  }
+
+  function claimMissionBonus() {
+    if (!canClaimMissionBonus()) return false;
+    missionState.bonusClaimed = true;
+    coins = Math.min(Number.MAX_SAFE_INTEGER, normalizeCoins(coins) + MISSION_BONUS_REWARD);
+    ensureAudio();
+    playGameSound("purchase");
+    syncEconomyBalances();
+    syncMissionUi();
+    requestSave(true);
+    return true;
+  }
+
+  function describeMission(mission) {
+    return t("mission_" + mission.type).replace("{n}", String(mission.target));
+  }
+
+  function formatMissionReset(now) {
+    const current = now instanceof Date ? now : new Date();
+    const midnight = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1);
+    const minutes = Math.max(1, Math.ceil((midnight - current) / 60000));
+    const time = t("hoursMinutes").replace("{h}", String(Math.floor(minutes / 60))).replace("{m}", String(minutes % 60));
+    return t("missionsReset").replace("{time}", time);
+  }
+
+  function createRewardChip(amount) {
+    const reward = document.createElement("span");
+    reward.className = "achievementRewardValue";
+    const coinIcon = document.createElement("span");
+    coinIcon.className = "coinIcon";
+    coinIcon.setAttribute("aria-hidden", "true");
+    reward.append(coinIcon, document.createTextNode("+" + amount));
+    return reward;
+  }
+
+  function createMissionCard({ icon, tierClass, title, value, target, reward, claimed, onClaim }) {
+    const complete = value >= target;
+    const card = document.createElement("article");
+    card.className = "missionCard " + tierClass + (complete ? " complete" : "") + (claimed ? " claimed" : "");
+    card.setAttribute("role", "listitem");
+    const badge = document.createElement("span");
+    badge.className = "missionIcon";
+    badge.setAttribute("aria-hidden", "true");
+    badge.textContent = claimed ? "✓" : icon;
+    const info = document.createElement("div");
+    info.className = "missionInfo";
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    info.append(heading, createChallengeProgress({ target }, value));
+    const side = document.createElement("div");
+    side.className = "missionReward";
+    side.append(createRewardChip(reward));
+    if (complete && !claimed) {
+      const claim = document.createElement("button");
+      claim.type = "button";
+      claim.className = "achievementClaimButton";
+      claim.textContent = t("achievementClaim");
+      claim.addEventListener("click", onClaim);
+      side.append(claim);
+    } else {
+      const status = document.createElement("span");
+      status.className = "achievementClaimed";
+      status.textContent = claimed ? t("achievementClaimed") : "";
+      side.append(status);
+    }
+    card.append(badge, info, side);
+    return card;
+  }
+
+  function renderMissions() {
+    if (!missionList) return;
+    if (ensureDailyMissions()) requestSave(false);
+    if (missionsCoinBalanceValue) missionsCoinBalanceValue.textContent = String(normalizeCoins(coins));
+    if (missionsResetText) missionsResetText.textContent = formatMissionReset();
+    const tierClasses = ["tier-easy", "tier-medium", "tier-hard"];
+    const cards = missionState.missions.map((mission, index) => createMissionCard({
+      icon: MISSION_TYPES[mission.type].icon,
+      tierClass: tierClasses[mission.tier] || "tier-easy",
+      title: describeMission(mission),
+      value: mission.progress,
+      target: mission.target,
+      reward: mission.reward,
+      claimed: mission.claimed,
+      onClaim: () => claimMission(index)
+    }));
+    const claimedCount = missionState.missions.filter((mission) => mission.claimed).length;
+    cards.push(createMissionCard({
+      icon: "★",
+      tierClass: "tier-bonus",
+      title: t("missionBonus"),
+      value: claimedCount,
+      target: MISSIONS_PER_DAY,
+      reward: MISSION_BONUS_REWARD,
+      claimed: missionState.bonusClaimed,
+      onClaim: claimMissionBonus
+    }));
+    // Keep keyboard focus on the same card / ball across the rebuild.
+    const focused = document.activeElement;
+    const focusedCard = focused && missionList.contains(focused) ? [...missionList.children].indexOf(focused.closest(".missionCard")) : -1;
+    const focusedSkin = focused && missionBallList && missionBallList.contains(focused) ? focused.dataset.skinId : null;
+    missionList.replaceChildren(...cards);
+    if (missionBallList) {
+      missionBallList.replaceChildren(...CHALLENGE_SKIN_ORDER.filter((id) => BALL_SKINS[id]).map(createBallSkinOption));
+    }
+    if (focusedCard >= 0 && cards[focusedCard]) {
+      const card = cards[focusedCard];
+      card.tabIndex = -1;
+      (card.querySelector("button") || card).focus({ preventScroll: true });
+    } else if (focusedSkin) {
+      missionBallList.querySelector(`[data-skin-id="${focusedSkin}"]`)?.focus({ preventScroll: true });
+    }
+    syncMissionTabs();
+  }
+
+  function syncMissionTabs() {
+    const daily = missionsTab === "daily";
+    missionsDailyTab?.setAttribute("aria-selected", String(daily));
+    missionsBallsTab?.setAttribute("aria-selected", String(!daily));
+    if (missionsDailyPanel) missionsDailyPanel.hidden = !daily;
+    if (missionsBallsPanel) missionsBallsPanel.hidden = daily;
+  }
+
+  function selectMissionsTab(tab) {
+    if (missionsTab === tab) return;
+    ensureAudio();
+    playGameSound("button");
+    missionsTab = tab;
+    syncMissionTabs();
+  }
+
+  function renderGameOverMissions() {
+    if (!gameOverMissions) return;
+    ensureDailyMissions();
+    const missions = missionState.missions;
+    gameOverMissions.hidden = missions.length === 0;
+    if (missions.length === 0) return;
+    const title = document.createElement("small");
+    title.className = "gameOverMissionsTitle";
+    title.textContent = t("dailyMissionsTitle");
+    const rows = missions.map((mission) => {
+      const row = document.createElement("div");
+      row.className = "gameOverMissionRow" + (isMissionComplete(mission) ? " complete" : "");
+      const label = document.createElement("span");
+      label.className = "gameOverMissionLabel";
+      label.textContent = (isMissionComplete(mission) ? "✓ " : "") + describeMission(mission);
+      row.append(label, createChallengeProgress({ target: mission.target }, mission.progress));
+      return row;
+    });
+    gameOverMissions.replaceChildren(title, ...rows);
+  }
+
+  function syncMissionBadges() {
+    const claimable = getClaimableMissionCount();
+    for (const button of [missionsButton, missionsDailyTab]) {
+      if (!button) continue;
+      button.dataset.achievementCount = String(claimable);
+      button.classList.toggle("hasAchievementBadge", claimable > 0);
+    }
+    missionsButton?.setAttribute(
+      "aria-label",
+      claimable > 0 ? `${t("missionsTab")} · ${claimable} ${t("achievementRewardsReady")}` : t("missionsTab")
+    );
+  }
+
+  function syncMissionUi() {
+    syncMissionBadges();
+    if (state === "missions") renderMissions();
+    if (state === "gameover") renderGameOverMissions();
+  }
+
+  // Once a minute: refresh the countdown and roll missions over at local midnight.
+  function tickMissionClock() {
+    if (!gameBooted) return;
+    if (ensureDailyMissions()) {
+      syncMissionUi();
+      requestSave(false);
+    } else if (state === "missions" && missionsResetText) {
+      missionsResetText.textContent = formatMissionReset();
+    }
+  }
+
   function getBallChallengeProgress(challenge) {
     if (challenge.metric === "perfectStreak") return achievementState.perfectStreakBest;
     if (challenge.metric === "runIgnitions") return achievementState.runIgnitionsBest;
@@ -5598,6 +6516,7 @@
       coins: normalizedCoins,
       stats: normalizedStats,
       achievements: normalizedAchievements,
+      missions: normalizeMissionState(source?.missions),
       ownedBallSkins: balls,
       ownedThemes: themes,
       darkMode: typeof settings.darkMode === "boolean" ? settings.darkMode : false,
@@ -5614,6 +6533,7 @@
     coins = migrated.coins;
     stats = migrated.stats;
     achievementState = migrated.achievements;
+    missionState = migrated.missions || createEmptyMissionState();
     ownedBallSkins = migrated.ownedBallSkins;
     ownedThemes = migrated.ownedThemes;
     darkMode = migrated.darkMode;
@@ -5719,6 +6639,7 @@
       coins: normalizeCoins(coins),
       stats: normalizeStats(stats),
       achievements: normalizeAchievementState(achievementState),
+      missions: serializeMissionState(),
       ownedBallSkins: Object.keys(BALL_SKINS).filter((id) => ownedBallSkins.has(id)),
       ownedThemes: Object.keys(THEMES).filter((id) => ownedThemes.has(id)),
       settings
@@ -5995,13 +6916,25 @@
     return true;
   }
 
+  function getToastItem(entry) {
+    if (entry.kind === "ball") return BALL_SKINS[entry.id];
+    if (entry.kind === "mission") return entry.mission;
+    return ACHIEVEMENT_BY_ID[entry.id];
+  }
+
   function syncAchievementToastText() {
     const entry = achievementToastEntry;
     if (!entry) return;
-    const item = entry.kind === "ball" ? BALL_SKINS[entry.id] : ACHIEVEMENT_BY_ID[entry.id];
+    const item = getToastItem(entry);
     if (!item) return;
-    if (achievementToastTitle) achievementToastTitle.textContent = t(entry.kind === "ball" ? "newBallUnlocked" : "achievementUnlocked");
-    achievementToastName.textContent = t(item.nameKey);
+    const titleKey = entry.kind === "ball" ? "newBallUnlocked" : entry.kind === "mission" ? "missionComplete" : "achievementUnlocked";
+    if (achievementToastTitle) achievementToastTitle.textContent = t(titleKey);
+    achievementToastName.textContent = entry.kind === "mission" ? describeMission(item) : t(item.nameKey);
+  }
+
+  function queueMissionToast(mission) {
+    achievementToastQueue.push({ kind: "mission", id: mission.type, mission });
+    showNextAchievementToast();
   }
 
   function queueAchievementToast(achievement) {
@@ -6019,7 +6952,7 @@
   function showNextAchievementToast() {
     if (!gameBooted || achievementToastTimer !== null || achievementToastQueue.length === 0) return;
     const entry = achievementToastQueue.shift();
-    const item = entry.kind === "ball" ? BALL_SKINS[entry.id] : ACHIEVEMENT_BY_ID[entry.id];
+    const item = getToastItem(entry);
     if (!item) {
       showNextAchievementToast();
       return;
@@ -6033,9 +6966,12 @@
         achievementToastMedal.replaceChildren(preview);
         drawBallPreviewCanvas(preview, item, { rotation: -0.35, time: 0, heat: 0, flash: 0 });
       } else {
-        achievementToastMedal.textContent = "★";
+        achievementToastMedal.textContent = entry.kind === "mission" ? "✓" : "★";
       }
+      achievementToastMedal.classList.toggle("missionMedal", entry.kind === "mission");
     }
+    // During play the toast sits under the HUD; over menus and dialogs it moves to the bottom.
+    achievementToast.classList.toggle("atBottom", state !== "playing");
     achievementToast.classList.add("active");
     achievementToastTimer = window.setTimeout(() => {
       achievementToast.classList.remove("active");
@@ -6062,6 +6998,7 @@
     writeBooleanPreference(DARK_MODE_KEY, darkMode);
     if (userPaused) draw();
     renderThemeCustomizer();
+    syncMenuHome();
     syncControlLabels();
   }
 
@@ -6075,12 +7012,16 @@
     }
     writeLanguagePreference(language);
     if (state === "gameover") {
-      finalScore.textContent = t("score") + " " + score;
+      renderGameOverSummary();
+      renderGameOverMissions();
       renderGameOverChallenge();
     }
     clearEconomyStatus("ball");
     clearEconomyStatus("theme");
     syncAchievementToastText();
+    syncTipText();
+    syncMissionBadges();
+    if (state === "missions") renderMissions();
     renderProfile();
     renderAchievements();
     syncEconomyBalances();
@@ -6103,6 +7044,8 @@
   function syncEconomyBalances() {
     const value = String(normalizeCoins(coins));
     if (coinHudValue) coinHudValue.textContent = value;
+    if (menuCoinValue) menuCoinValue.textContent = value;
+    if (missionsCoinBalanceValue) missionsCoinBalanceValue.textContent = value;
     if (ballCoinBalanceValue) ballCoinBalanceValue.textContent = value;
     if (themeCoinBalanceValue) themeCoinBalanceValue.textContent = value;
     if (achievementCoinBalanceValue) achievementCoinBalanceValue.textContent = value;
@@ -6161,8 +7104,9 @@
 
   function sizeBallPreviewCanvas(canvasElement, large) {
     const rect = canvasElement.getBoundingClientRect();
-    const cssWidth = rect.width > 0 ? rect.width : (large ? 160 : 48);
-    const cssHeight = rect.height > 0 ? rect.height : (large ? 180 : 48);
+    const fallback = canvasElement.classList.contains("tile") ? 60 : 48;
+    const cssWidth = rect.width > 0 ? rect.width : (large ? 160 : fallback);
+    const cssHeight = rect.height > 0 ? rect.height : (large ? 180 : fallback);
     const previewDpr = Math.min(window.devicePixelRatio || 1, 3);
     const pixelWidth = Math.round(cssWidth * previewDpr);
     const pixelHeight = Math.round(cssHeight * previewDpr);
@@ -6296,8 +7240,9 @@
     return label;
   }
 
-  function createChallengeProgress(challenge) {
-    const value = Math.min(getBallChallengeProgress(challenge), challenge.target);
+  function createChallengeProgress(challenge, customValue) {
+    const raw = customValue === undefined ? getBallChallengeProgress(challenge) : customValue;
+    const value = Math.min(raw, challenge.target);
     const progress = document.createElement("span");
     progress.className = "challengeProgress";
     progress.style.setProperty("--progress", String(value / challenge.target));
@@ -6321,7 +7266,7 @@
     let stateLabel = getCosmeticStateLabel(isSelected, isOwned, ECONOMY_PRICES.ball[skin.id] ?? 0);
     if (lockedChallenge) stateLabel = t(challenge.descriptionKey);
     option.type = "button";
-    option.className = "ballSkinOption" + (isOwned ? "" : " locked") + (challenge ? " challenge" : "");
+    option.className = "ballSkinOption" + (isOwned ? "" : " locked") + (challenge ? " challenge" : " tileOption");
     option.dataset.skinId = skin.id;
     option.setAttribute("role", "option");
     option.setAttribute("aria-selected", String(isSelected));
@@ -6329,9 +7274,10 @@
       ? ", " + t("challengeProgress") + " " + Math.min(getBallChallengeProgress(challenge), challenge.target) + " / " + challenge.target
       : "";
     option.setAttribute("aria-label", t(skin.nameKey) + ", " + stateLabel + progressLabel);
-    option.appendChild(createBallPreviewElement("", skin));
+    option.appendChild(createBallPreviewElement(challenge ? "" : "tile", skin));
 
     const copy = document.createElement("span");
+    copy.className = "optionCopy";
     const name = document.createElement("strong");
     const description = document.createElement("small");
     name.textContent = t(skin.nameKey);
@@ -6341,7 +7287,15 @@
       badge.textContent = t("newBadge");
       name.appendChild(badge);
     }
-    description.textContent = stateLabel;
+    if (!isOwned && !challenge) {
+      description.className = "priceTag";
+      const coinIcon = document.createElement("span");
+      coinIcon.className = "coinIcon";
+      coinIcon.setAttribute("aria-hidden", "true");
+      description.append(coinIcon, document.createTextNode(String(ECONOMY_PRICES.ball[skin.id] ?? 0)));
+    } else {
+      description.textContent = stateLabel;
+    }
     copy.append(name, description);
     if (lockedChallenge) copy.appendChild(createChallengeProgress(challenge));
     option.appendChild(copy);
@@ -6356,15 +7310,33 @@
   }
 
   function createThemeSwatch(theme, extraClass) {
-    const colors = darkMode ? theme.colors.dark : theme.colors.light;
     const swatch = document.createElement("span");
     swatch.className = "themeSwatch" + (extraClass ? " " + extraClass : "");
     swatch.setAttribute("aria-hidden", "true");
+    applyThemeSwatchColors(swatch, theme);
+    if (ThemeArt) {
+      swatch.classList.add("hasArt");
+      const preview = document.createElement("canvas");
+      preview.dataset.themePreview = theme.id;
+      swatch.appendChild(preview);
+    }
+    return swatch;
+  }
+
+  // Theme previews need their laid-out size, so they are painted after insertion.
+  function paintThemePreviews(root) {
+    if (!ThemeArt || !root || typeof root.querySelectorAll !== "function") return;
+    for (const preview of root.querySelectorAll("canvas[data-theme-preview]")) {
+      drawThemePreviewCanvas(preview, preview.dataset.themePreview);
+    }
+  }
+
+  function applyThemeSwatchColors(swatch, theme) {
+    const colors = darkMode ? theme.colors.dark : theme.colors.light;
     swatch.style.setProperty("--theme-bg-top", colors.backgroundTop);
     swatch.style.setProperty("--theme-bg-bottom", colors.backgroundBottom);
     swatch.style.setProperty("--theme-rim", colors.rim);
     swatch.style.setProperty("--theme-wall", colors.wallEdge);
-    return swatch;
   }
 
   function renderThemeCustomizer() {
@@ -6388,10 +7360,19 @@
       option.setAttribute("aria-label", t(theme.nameKey) + ", " + stateLabel);
 
       const copy = document.createElement("span");
+      copy.className = "optionCopy";
       const name = document.createElement("strong");
       const description = document.createElement("small");
       name.textContent = t(theme.nameKey);
-      description.textContent = stateLabel;
+      if (!isOwned) {
+        description.className = "priceTag";
+        const coinIcon = document.createElement("span");
+        coinIcon.className = "coinIcon";
+        coinIcon.setAttribute("aria-hidden", "true");
+        description.append(coinIcon, document.createTextNode(String(price)));
+      } else {
+        description.textContent = stateLabel;
+      }
       copy.append(name, description);
 
       const check = document.createElement("span");
@@ -6402,6 +7383,7 @@
       option.addEventListener("click", () => selectTheme(theme.id));
       themeList.appendChild(option);
     }
+    paintThemePreviews(themeList);
   }
 
   // One modal for buying (ball or theme) and for reading a challenge ball's task.
@@ -6410,7 +7392,7 @@
     shopDialog.open = true;
     shopDialog.onConfirm = options.onConfirm || null;
     shopDialog.returnFocus = options.returnFocus || null;
-    for (const overlay of [customizeOverlay, themeOverlay]) if (overlay) overlay.inert = true;
+    for (const overlay of [customizeOverlay, themeOverlay, missionsOverlay]) if (overlay) overlay.inert = true;
     shopDialog.ballSkin = options.ballSkin || null;
     shopDialog.canvas = null;
     if (options.ballSkin) {
@@ -6421,6 +7403,7 @@
       shopDialogPreview.replaceChildren(canvasElement);
     } else {
       shopDialogPreview.replaceChildren(createThemeSwatch(options.theme, "large"));
+      paintThemePreviews(shopDialogPreview);
     }
     shopDialogTitle.textContent = options.title;
     shopDialogText.textContent = options.text;
@@ -6444,7 +7427,7 @@
     shopDialog.onConfirm = null;
     shopDialog.ballSkin = null;
     shopDialog.canvas = null;
-    for (const overlay of [customizeOverlay, themeOverlay]) if (overlay) overlay.inert = false;
+    for (const overlay of [customizeOverlay, themeOverlay, missionsOverlay]) if (overlay) overlay.inert = false;
     if (!shopDialogOverlay) return;
     shopDialogOverlay.classList.remove("active");
     shopDialogOverlay.setAttribute("aria-hidden", "true");
@@ -6452,9 +7435,17 @@
   }
 
   // Lists are rebuilt after a purchase, so focus goes back to the row by id, not by element.
+  // The same ball can be listed in the shop and in the missions tab; look in the open sheet.
+  function getActiveSheet() {
+    if (state === "missions") return missionsOverlay;
+    if (state === "theme") return themeOverlay;
+    if (state === "customize") return customizeOverlay;
+    return document;
+  }
+
   function restoreShopFocus(selector) {
     if (!selector) return;
-    const target = document.querySelector(selector);
+    const target = (getActiveSheet() || document).querySelector(selector);
     if (target) target.focus({ preventScroll: true });
   }
 
@@ -6531,6 +7522,8 @@
     writeBallSkinPreference(skinId, saveNow);
     syncEconomyBalances();
     renderBallCustomizer();
+    if (state === "missions") renderMissions();
+    syncMenuHome();
   }
 
   function selectTheme(themeId) {
@@ -6575,6 +7568,7 @@
     writeThemePreference(themeId, saveNow);
     syncEconomyBalances();
     renderThemeCustomizer();
+    syncMenuHome();
     draw();
   }
 
@@ -6616,22 +7610,37 @@
 
   function syncControlLabels() {
     const soundEnabled = !muted;
-    const enabledLabel = darkMode ? t("on") : t("off");
-    const darkLabel = t("darkMode") + ": " + enabledLabel;
+    const stateLabel = (enabled) => (enabled ? t("on") : t("off"));
     settingsSoundButton.setAttribute("aria-pressed", String(soundEnabled));
-    settingsSoundButton.textContent = t("sound") + ": " + (soundEnabled ? t("on") : t("off"));
+    settingsSoundButton.setAttribute("aria-label", t("sound") + ": " + stateLabel(soundEnabled));
     settingsHapticsButton.hidden = !canVibrate;
     settingsHapticsButton.setAttribute("aria-pressed", String(hapticsEnabled));
-    settingsHapticsButton.textContent = t("haptics") + ": " + (hapticsEnabled ? t("on") : t("off"));
+    settingsHapticsButton.setAttribute("aria-label", t("haptics") + ": " + stateLabel(hapticsEnabled));
     settingsDarkModeButton.setAttribute("aria-pressed", String(darkMode));
-    settingsDarkModeButton.textContent = darkLabel;
-    languageButton.textContent = t("language") + ": " + (language === "tr" ? t("turkish") : t("english"));
-    menuButton.textContent = t("menu");
-    menuButton.setAttribute("aria-label", menuButton.textContent);
+    settingsDarkModeButton.setAttribute("aria-label", t("darkMode") + ": " + stateLabel(darkMode));
+    const languageName = language === "tr" ? t("turkish") : t("english");
+    if (languageValue) languageValue.textContent = languageName;
+    languageButton.setAttribute("aria-label", t("language") + ": " + languageName);
+    menuButton.setAttribute("aria-label", t("menu"));
+    if (replayTutorialButton) {
+      const done = replayTutorialButton.classList.contains("done");
+      const value = replayTutorialButton.querySelector(".settingValue");
+      if (value) value.textContent = done ? "✓" : t("replay");
+      replayTutorialButton.setAttribute("aria-label", t("tutorialReplay") + (done ? ": " + t("tutorialReady") : ""));
+    }
+  }
+
+  // Main menu tiles show the player's own ball and theme.
+  function syncMenuHome() {
+    if (menuBallIcon) drawBallPreviewCanvas(menuBallIcon, getSelectedBallSkin(), { rotation: -0.35, time: 0, heat: 0, flash: 0 });
+    if (menuThemeIcon) {
+      menuThemeIcon.replaceChildren(createThemeSwatch(THEMES[selectedThemeId] || THEMES.gym, "tileSwatch"));
+      paintThemePreviews(menuThemeIcon);
+    }
   }
 
   function syncUiState() {
-    const hideHud = state === "menu" || state === "profile" || state === "achievements" || state === "settings" || state === "customize" || state === "theme" || state === "pause-settings";
+    const hideHud = state === "menu" || state === "profile" || state === "achievements" || state === "settings" || state === "customize" || state === "theme" || state === "missions" || state === "pause-settings";
     hud.classList.toggle("hidden", hideHud);
     hud.classList.toggle("pauseActive", state === "paused");
     syncControlLabels();
@@ -6649,6 +7658,8 @@
       renderThemeCustomizer();
     } else if (panelName === "profile") {
       renderProfile();
+    } else if (panelName === "missions") {
+      renderMissions();
     }
     mainMenuOverlay.classList.remove("active");
     profileOverlay.classList.toggle("active", panelName === "profile");
@@ -6656,6 +7667,7 @@
     settingsOverlay.classList.toggle("active", panelName === "settings");
     customizeOverlay.classList.toggle("active", panelName === "customize");
     themeOverlay?.classList.toggle("active", panelName === "theme");
+    missionsOverlay?.classList.toggle("active", panelName === "missions");
     syncUiState();
     if (panelName === "customize") startBallPreviewAnimation();
   }
@@ -6692,7 +7704,9 @@
     settingsOverlay.classList.remove("active");
     customizeOverlay.classList.remove("active");
     themeOverlay?.classList.remove("active");
+    missionsOverlay?.classList.remove("active");
     mainMenuOverlay.classList.add("active");
+    syncMenuHome();
     syncUiState();
   }
 
@@ -6709,6 +7723,7 @@
     }
     activePointer = null;
     stopAnimationLoop();
+    pauseTipTimer();
     if (audioContext && audioContext.state === "running") audioContext.suspend().catch(() => {});
     pauseOverlay.classList.add("active");
     settingsOverlay.classList.remove("active");
@@ -6722,6 +7737,7 @@
     setGameState("playing");
     pauseOverlay.classList.remove("active");
     syncUiState();
+    resumeTipTimer();
     if (!muted && audioContext) audioContext.resume().catch(() => {});
     restartAnimationLoop();
   }
@@ -6937,6 +7953,8 @@
     applyLanguage();
     applyDarkMode();
     resetGame(true);
+    syncMenuHome();
+    initTutorial();
     persistenceReady = true;
     gameBooted = true;
     const bootstrapChallengesChanged = evaluateBallChallenges(true);
@@ -6953,6 +7971,10 @@
       requestSave(true);
     }
     const dailyLoginChanged = recordDailyLogin();
+    const missionsRolled = ensureDailyMissions();
+    syncMissionBadges();
+    window.setInterval(tickMissionClock, 60000);
+    if (missionsRolled && !dailyLoginChanged) requestSave(true);
     syncAchievementUi();
     if (shouldPersistMigratedSave || (bootstrapAchievementsChanged && !dailyLoginChanged)) requestSave(true);
     restartAnimationLoop();
@@ -6986,6 +8008,11 @@
   settingsHapticsButton.addEventListener("click", toggleHaptics);
   settingsDarkModeButton.addEventListener("click", toggleDarkMode);
   languageButton.addEventListener("click", toggleLanguage);
+  if (replayTutorialButton) replayTutorialButton.addEventListener("click", replayTutorial);
+  if (missionsButton) missionsButton.addEventListener("click", () => openMenuPanel("missions"));
+  if (missionsBackButton) missionsBackButton.addEventListener("click", returnToMainMenu);
+  if (missionsDailyTab) missionsDailyTab.addEventListener("click", () => selectMissionsTab("daily"));
+  if (missionsBallsTab) missionsBallsTab.addEventListener("click", () => selectMissionsTab("balls"));
   settingsBackButton.addEventListener("click", closeSettings);
   profileBackButton.addEventListener("click", returnToMainMenu);
   profileAchievementsButton.addEventListener("click", openAchievements);
@@ -7048,7 +8075,7 @@
         closeAchievements();
         return;
       }
-      if (state === "profile" || state === "customize" || state === "theme") {
+      if (state === "profile" || state === "customize" || state === "theme" || state === "missions") {
         event.preventDefault();
         returnToMainMenu();
         return;

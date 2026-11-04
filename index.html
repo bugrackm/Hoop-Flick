@@ -1,4 +1,4 @@
-<!doctype html> 
+<!doctype html>
 <html lang="tr">
 <head>
   <meta charset="utf-8">
@@ -8,167 +8,298 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>Hoop Flick</title>
-  <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="apple-touch-icon" href="favicon.png">
-  <link rel="stylesheet" href="style.css?v=release-2f6fb1b94304">
+  <link rel="icon" type="image/png" href="favicon.png?v=release-6da190bd33ac">
+  <link rel="apple-touch-icon" href="favicon.png?v=release-6da190bd33ac">
+  <link rel="stylesheet" href="style.css?v=release-a9c39b2b43dc">
 </head>
-<body> 
+<body>
+  <!-- Icon sprite: line icons in the ink style; shapes adapted from Feather (MIT). -->
+  <svg class="iconSprite" aria-hidden="true" focusable="false">
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.6v14.8a1 1 0 0 0 1.52.85l12.1-7.4a1 1 0 0 0 0-1.7L8.52 3.75A1 1 0 0 0 7 4.6z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="5.5" y="4" width="4.6" height="16" rx="1.6" fill="currentColor" stroke="none"/><rect x="13.9" y="4" width="4.6" height="16" rx="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M17 5.5h2.5a.5.5 0 0 1 .5.5v1a3.5 3.5 0 0 1-3.5 3.5M7 5.5H4.5A.5.5 0 0 0 4 6v1a3.5 3.5 0 0 0 3.5 3.5" fill="none"/><path d="M12 14v4" fill="none"/><path d="M8 20.5h8v-1.2a1.3 1.3 0 0 0-1.3-1.3H9.3A1.3 1.3 0 0 0 8 19.3z"/><path d="M7 3.5h10v5.5a5 5 0 0 1-10 0z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5L12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6.5H9V21H4.5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 24 24"><path d="M3.5 4.5v5.5H9"/><path d="M4.4 14.5A8 8 0 1 0 6.3 6.2L3.5 9.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+    <symbol id="i-missions" viewBox="0 0 24 24"><rect x="4.5" y="4" width="15" height="17" rx="2.2"/><path d="M9 3v2.5h6V3M8.2 11.5l1.6 1.6 3-3M8.2 16.5h7.6"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.6l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z" fill="currentColor"/></symbol>
+  </svg>
+
   <main id="gameShell" aria-label="Hoop Flick basketball arcade game">
     <canvas id="gameCanvas" aria-label="Game canvas"></canvas>
 
-    <section id="mainMenuOverlay" class="overlay menuOverlay active" aria-live="polite">
-      <div class="panel menuPanel">
-        <span class="eyebrow" data-i18n="arcadeEyebrow">ARCADE BASKETBOL</span>
-        <h1>Hoop Flick</h1>
-        <p data-i18n="tagline">Çek, bırak ve yükselmeye devam et.</p>
-        <div class="menuActions">
-          <button id="startButton" class="primaryButton" type="button" data-i18n="play">Oyna</button>
-          <button id="customizeButton" class="secondaryButton achievementBadgeHost" type="button" data-i18n="customize" data-achievement-count="0">Topu Özelleştir</button>
-          <button id="customizeThemeButton" class="secondaryButton" type="button" data-i18n="customizeTheme">Temayı Özelleştir</button>
-          <button id="profileButton" class="secondaryButton achievementBadgeHost" type="button" data-i18n="profile" data-achievement-count="0">Profil</button>
-          <button id="settingsButton" class="secondaryButton" type="button" data-i18n="settings">Ayarlar</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="profileOverlay" class="overlay menuOverlay" aria-live="polite">
-      <div class="panel menuPanel compact profilePanel">
-        <span class="eyebrow">HOOP FLICK</span>
-        <h2 data-i18n="profile">Profil</h2>
-        <dl class="profileStats">
-          <div class="profileStat">
-            <dt data-i18n="activePlayTime">Aktif Oynama Süresi</dt>
-            <dd id="activePlayTimeValue">00:00:00</dd>
-          </div>
-          <div class="profileStat">
-            <dt data-i18n="perfectBaskets">Deliksiz Atışlar</dt>
-            <dd id="perfectBasketsValue">0</dd>
-          </div>
-          <div class="profileStat">
-            <dt data-i18n="bounceBaskets">Duvardan Atışlar</dt>
-            <dd id="bounceBasketsValue">0</dd>
-          </div>
-          <div class="profileStat">
-            <dt data-i18n="lifetimeScore">Toplam Skor</dt>
-            <dd id="lifetimeScoreValue">0</dd>
-          </div>
-          <div class="profileStat">
-            <dt data-i18n="worldCoinsCollected">Toplanan Dünya Coinleri</dt>
-            <dd id="worldCoinsCollectedValue">0</dd>
-          </div>
-        </dl>
-        <div class="menuActions">
-          <button id="profileAchievementsButton" class="secondaryButton achievementBadgeHost" type="button" data-i18n="achievements" data-achievement-count="0">Başarılar</button>
-          <button id="profileBackButton" class="primaryButton" type="button" data-i18n="back">Geri</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="achievementsOverlay" class="overlay menuOverlay" aria-live="polite">
-      <div class="panel menuPanel compact achievementsPanel">
-        <span class="eyebrow" data-i18n="achievementEyebrow">ÖDÜL YOLCULUĞU</span>
-        <h2 data-i18n="achievements">Başarılar</h2>
-        <div class="achievementOverview">
-          <div class="economyBalance achievementBalance" role="status" aria-live="polite">
+    <section id="mainMenuOverlay" class="overlay menuOverlay homeOverlay active" aria-live="polite">
+      <div class="homeLayout">
+        <div class="homeTop">
+          <div class="pill coinPill" role="status">
             <span class="coinIcon" aria-hidden="true"></span>
-            <span data-i18n="coins">Coin</span>
+            <strong id="menuCoinValue">0</strong>
+          </div>
+          <button id="settingsButton" class="roundButton" type="button" data-i18n-aria-label="settings" aria-label="Ayarlar">
+            <svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg>
+          </button>
+        </div>
+        <div class="homeHero">
+          <span class="eyebrow" data-i18n="arcadeEyebrow">ARCADE BASKETBOL</span>
+          <h1 class="logo" lang="en" aria-label="Hoop Flick"><span class="logoLine">Hoop</span><span class="logoLine logoAccent">Flick</span></h1>
+          <div class="bestBadge"><span data-i18n="best">En İyi</span><strong id="menuBestValue">0</strong></div>
+        </div>
+        <div class="homeDock">
+          <button id="startButton" class="playButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>
+            <span data-i18n="play">Oyna</span>
+          </button>
+          <div class="homeTiles" style="--tile-count: 4">
+            <button id="customizeButton" class="tileButton achievementBadgeHost" type="button" data-achievement-count="0">
+              <span class="tileArt"><canvas id="menuBallIcon" class="tileBall" aria-hidden="true"></canvas></span>
+              <span class="tileLabel" data-i18n="ballsTab">Toplar</span>
+            </button>
+            <button id="customizeThemeButton" class="tileButton" type="button">
+              <span class="tileArt"><span id="menuThemeIcon" class="tileThemeHolder" aria-hidden="true"></span></span>
+              <span class="tileLabel" data-i18n="themesTab">Temalar</span>
+            </button>
+            <button id="missionsButton" class="tileButton achievementBadgeHost" type="button" data-achievement-count="0">
+              <span class="tileArt"><svg class="icon tileIcon missionsIcon" aria-hidden="true"><use href="#i-missions"/></svg></span>
+              <span class="tileLabel" data-i18n="missionsTab">Görevler</span>
+            </button>
+            <button id="profileButton" class="tileButton achievementBadgeHost" type="button" data-achievement-count="0">
+              <span class="tileArt"><svg class="icon tileIcon" aria-hidden="true"><use href="#i-trophy"/></svg></span>
+              <span class="tileLabel" data-i18n="profile">Profil</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="profileOverlay" class="overlay menuOverlay sheetOverlay" aria-live="polite">
+      <div class="sheet profilePanel">
+        <header class="sheetHeader">
+          <button id="profileBackButton" class="roundButton" type="button" data-i18n-aria-label="back" aria-label="Geri">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+          </button>
+          <h2 data-i18n="profile">Profil</h2>
+          <span class="sheetHeaderSpacer" aria-hidden="true"></span>
+        </header>
+        <div class="sheetBody">
+          <div class="profileHero card">
+            <span class="profileHeroLabel" data-i18n="best">En İyi</span>
+            <strong id="profileBestValue">0</strong>
+          </div>
+          <dl class="profileStats">
+            <div class="profileStat card">
+              <dt data-i18n="activePlayTime">Aktif Oynama Süresi</dt>
+              <dd id="activePlayTimeValue">00:00:00</dd>
+            </div>
+            <div class="profileStat card">
+              <dt data-i18n="perfectBaskets">Deliksiz Atışlar</dt>
+              <dd id="perfectBasketsValue">0</dd>
+            </div>
+            <div class="profileStat card">
+              <dt data-i18n="bounceBaskets">Duvardan Atışlar</dt>
+              <dd id="bounceBasketsValue">0</dd>
+            </div>
+            <div class="profileStat card">
+              <dt data-i18n="lifetimeScore">Toplam Skor</dt>
+              <dd id="lifetimeScoreValue">0</dd>
+            </div>
+            <div class="profileStat card">
+              <dt data-i18n="worldCoinsCollected">Toplanan Dünya Coinleri</dt>
+              <dd id="worldCoinsCollectedValue">0</dd>
+            </div>
+          </dl>
+          <button id="profileAchievementsButton" class="bigRowButton achievementBadgeHost" type="button" data-achievement-count="0">
+            <svg class="icon" aria-hidden="true"><use href="#i-trophy"/></svg>
+            <span data-i18n="achievements">Başarılar</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="achievementsOverlay" class="overlay menuOverlay sheetOverlay" aria-live="polite">
+      <div class="sheet achievementsPanel">
+        <header class="sheetHeader">
+          <button id="achievementsBackButton" class="roundButton" type="button" data-i18n-aria-label="backToProfile" aria-label="Profile Dön">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+          </button>
+          <h2 data-i18n="achievements">Başarılar</h2>
+          <div class="pill coinPill economyBalance achievementBalance" role="status" aria-live="polite">
+            <span class="coinIcon" aria-hidden="true"></span>
             <strong id="achievementCoinBalanceValue">0</strong>
           </div>
-          <p id="achievementSummary" class="achievementSummary">0 / 19</p>
-        </div>
-        <button id="achievementClaimAllButton" class="primaryButton achievementClaimAllButton" type="button" disabled data-i18n="claimAllAchievements">Tümünü Topla</button>
-        <div id="achievementList" class="achievementList" role="list"></div>
-        <div class="menuActions">
-          <button id="achievementsBackButton" class="secondaryButton" type="button" data-i18n="backToProfile">Profile Dön</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="settingsOverlay" class="overlay menuOverlay" aria-live="polite">
-      <div class="panel menuPanel compact">
-        <span class="eyebrow">HOOP FLICK</span>
-        <h2 data-i18n="settings">Ayarlar</h2>
-        <div class="menuActions">
-          <button id="settingsSoundButton" class="secondaryButton toggleButton" type="button" aria-pressed="true">Ses: Açık</button>
-          <button id="settingsHapticsButton" class="secondaryButton toggleButton" type="button" aria-pressed="true" hidden>Titreşim: Açık</button>
-          <button id="settingsDarkModeButton" class="secondaryButton toggleButton" type="button" aria-pressed="false">Karanlık Mod: Kapalı</button>
-          <button id="languageButton" class="secondaryButton toggleButton" type="button">Dil: Türkçe</button>
-          <button id="settingsBackButton" class="primaryButton" type="button" data-i18n="back">Geri</button>
+        </header>
+        <div class="sheetBody">
+          <div class="achievementOverview">
+            <p id="achievementSummary" class="achievementSummary">0 / 19</p>
+            <button id="achievementClaimAllButton" class="primaryButton achievementClaimAllButton" type="button" disabled data-i18n="claimAllAchievements">Tümünü Topla</button>
+          </div>
+          <div id="achievementList" class="achievementList" role="list"></div>
         </div>
       </div>
     </section>
 
-    <section id="customizeOverlay" class="overlay menuOverlay" aria-live="polite">
-      <div class="panel menuPanel compact customizePanel">
-        <span class="eyebrow" data-i18n="collectionEyebrow">TOP KOLEKSİYONU</span>
-        <h2 data-i18n="chooseBall">Topunu Seç</h2>
-        <div id="customizeBallPreview" class="customizeBallPreview" aria-hidden="true"></div>
-        <h3 id="customizeBallName">Klasik Turuncu</h3>
-        <p data-i18n="ballCollectionHint">Yeni top stilleri için hazır koleksiyon.</p>
-        <div id="ballCoinBalance" class="economyBalance" role="status" aria-live="polite">
-          <span class="coinIcon" aria-hidden="true"></span>
-          <span data-i18n="coins">Coin</span>
-          <strong id="ballCoinBalanceValue">0</strong>
+    <section id="missionsOverlay" class="overlay menuOverlay sheetOverlay" aria-live="polite">
+      <div class="sheet missionsPanel">
+        <header class="sheetHeader">
+          <button id="missionsBackButton" class="roundButton" type="button" data-i18n-aria-label="back" aria-label="Geri">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+          </button>
+          <h2 data-i18n="missionsTab">Görevler</h2>
+          <div class="pill coinPill economyBalance" role="status" aria-live="polite">
+            <span class="coinIcon" aria-hidden="true"></span>
+            <strong id="missionsCoinBalanceValue">0</strong>
+          </div>
+        </header>
+        <div class="segmented" role="tablist">
+          <button id="missionsDailyTab" class="segment achievementBadgeHost" type="button" role="tab" aria-selected="true" data-achievement-count="0" data-i18n="dailyMissions">Günlük</button>
+          <button id="missionsBallsTab" class="segment" type="button" role="tab" aria-selected="false" data-i18n="challengeBalls">Görev Topları</button>
         </div>
-        <p id="ballEconomyStatus" class="economyStatus" role="status" aria-live="polite"></p>
-        <div id="ballSkinList" class="ballSkinList" role="listbox" data-i18n-aria-label="chooseBall"></div>
-        <div class="menuActions">
-          <button id="customizeBackButton" class="primaryButton" type="button" data-i18n="back">Geri</button>
+        <div class="sheetBody">
+          <div id="missionsDailyPanel" class="missionsTabPanel" role="tabpanel">
+            <p id="missionsResetText" class="missionsReset"></p>
+            <div id="missionList" class="missionList" role="list"></div>
+          </div>
+          <div id="missionsBallsPanel" class="missionsTabPanel" role="tabpanel" hidden>
+            <p class="missionsReset" data-i18n="challengeBallsHint"></p>
+            <div id="missionBallList" class="ballSkinList missionBallList" role="listbox" data-i18n-aria-label="challengeBalls"></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="themeOverlay" class="overlay menuOverlay" aria-live="polite">
-      <div class="panel menuPanel compact customizePanel themePanel">
-        <span class="eyebrow" data-i18n="backgroundTheme">Arka Plan Teması</span>
-        <h2 data-i18n="customizeTheme">Temayı Özelleştir</h2>
-        <div id="themeCoinBalance" class="economyBalance" role="status" aria-live="polite">
-          <span class="coinIcon" aria-hidden="true"></span>
-          <span data-i18n="coins">Coin</span>
-          <strong id="themeCoinBalanceValue">0</strong>
+    <section id="settingsOverlay" class="overlay menuOverlay sheetOverlay" aria-live="polite">
+      <div class="sheet settingsPanel">
+        <header class="sheetHeader">
+          <button id="settingsBackButton" class="roundButton" type="button" data-i18n-aria-label="back" aria-label="Geri">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+          </button>
+          <h2 data-i18n="settings">Ayarlar</h2>
+          <span class="sheetHeaderSpacer" aria-hidden="true"></span>
+        </header>
+        <div class="sheetBody">
+          <div class="settingsList card">
+            <button id="settingsSoundButton" class="settingRow toggleButton" type="button" aria-pressed="true">
+              <span class="settingLabel" data-i18n="sound">Ses</span><span class="switch" aria-hidden="true"></span>
+            </button>
+            <button id="settingsHapticsButton" class="settingRow toggleButton" type="button" aria-pressed="true" hidden>
+              <span class="settingLabel" data-i18n="haptics">Titreşim</span><span class="switch" aria-hidden="true"></span>
+            </button>
+            <button id="settingsDarkModeButton" class="settingRow toggleButton" type="button" aria-pressed="false">
+              <span class="settingLabel" data-i18n="darkMode">Karanlık Mod</span><span class="switch" aria-hidden="true"></span>
+            </button>
+            <button id="languageButton" class="settingRow" type="button">
+              <span class="settingLabel" data-i18n="language">Dil</span><span id="languageValue" class="settingValue">Türkçe</span>
+            </button>
+            <button id="replayTutorialButton" class="settingRow" type="button">
+              <span class="settingLabel" data-i18n="tutorialReplay">Eğitimi Tekrarla</span><span class="settingValue">Başlat</span>
+            </button>
+          </div>
         </div>
+      </div>
+    </section>
+
+    <section id="customizeOverlay" class="overlay menuOverlay sheetOverlay" aria-live="polite">
+      <div class="sheet customizePanel">
+        <header class="sheetHeader">
+          <button id="customizeBackButton" class="roundButton" type="button" data-i18n-aria-label="back" aria-label="Geri">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+          </button>
+          <h2 data-i18n="ballsTab">Toplar</h2>
+          <div id="ballCoinBalance" class="pill coinPill economyBalance" role="status" aria-live="polite">
+            <span class="coinIcon" aria-hidden="true"></span>
+            <strong id="ballCoinBalanceValue">0</strong>
+          </div>
+        </header>
+        <div class="previewStage">
+          <div id="customizeBallPreview" class="customizeBallPreview" aria-hidden="true"></div>
+          <h3 id="customizeBallName">Klasik Turuncu</h3>
+          <p id="ballEconomyStatus" class="economyStatus" role="status" aria-live="polite"></p>
+        </div>
+        <div class="sheetBody">
+          <div id="ballSkinList" class="ballSkinList" role="listbox" data-i18n-aria-label="chooseBall"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="themeOverlay" class="overlay menuOverlay sheetOverlay" aria-live="polite">
+      <div class="sheet customizePanel themePanel">
+        <header class="sheetHeader">
+          <button id="themeBackButton" class="roundButton" type="button" data-i18n-aria-label="back" aria-label="Geri">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+          </button>
+          <h2 data-i18n="themesTab">Temalar</h2>
+          <div id="themeCoinBalance" class="pill coinPill economyBalance" role="status" aria-live="polite">
+            <span class="coinIcon" aria-hidden="true"></span>
+            <strong id="themeCoinBalanceValue">0</strong>
+          </div>
+        </header>
         <p id="themeEconomyStatus" class="economyStatus" role="status" aria-live="polite"></p>
-        <div id="themeList" class="themeList" role="listbox" data-i18n-aria-label="backgroundTheme"></div>
-        <div class="menuActions">
-          <button id="themeBackButton" class="primaryButton" type="button" data-i18n="back">Geri</button>
+        <div class="sheetBody">
+          <div id="themeList" class="themeList" role="listbox" data-i18n-aria-label="backgroundTheme"></div>
         </div>
       </div>
     </section>
 
-    <section id="pauseOverlay" class="overlay pauseOverlay" aria-live="polite">
-      <div class="panel compact pausePanel">
-        <span class="eyebrow" data-i18n="pauseEyebrow">OYUN DURAKLATILDI</span>
-        <h2 data-i18n="paused">Duraklatıldı</h2>
-        <p data-i18n="pauseHint">Oyuna dönmek için Devam Et düğmesine bas.</p>
-        <div class="menuActions">
-          <button id="pauseContinueButton" class="primaryButton" type="button" data-i18n="continue">Devam Et</button>
-          <button id="pauseSettingsButton" class="secondaryButton" type="button" data-i18n="settings">Ayarlar</button>
-          <button id="pauseMainMenuButton" class="secondaryButton" type="button" data-i18n="returnMainMenu">Ana Menüye Dön</button>
+    <section id="pauseOverlay" class="overlay pauseOverlay dimOverlay" aria-live="polite">
+      <div class="dialogCard pausePanel">
+        <span class="ribbon" data-i18n="paused">Duraklatıldı</span>
+        <div class="dialogActions">
+          <button id="pauseContinueButton" class="primaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span data-i18n="continue">Devam Et</span>
+          </button>
+          <button id="pauseSettingsButton" class="secondaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg><span data-i18n="settings">Ayarlar</span>
+          </button>
+          <button id="pauseMainMenuButton" class="secondaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span data-i18n="returnMainMenu">Ana Menüye Dön</span>
+          </button>
         </div>
       </div>
     </section>
 
-    <section id="gameOverOverlay" class="overlay" aria-live="polite">
-      <div class="panel compact">
-        <h2 data-i18n="gameOver">Oyun Bitti</h2>
-        <p id="finalScore">Skor 0</p>
+    <section id="gameOverOverlay" class="overlay dimOverlay" aria-live="polite">
+      <div class="dialogCard gameOverPanel">
+        <span class="ribbon" data-i18n="gameOver">Oyun Bitti</span>
+        <div class="gameOverScore">
+          <span id="gameOverNewBest" class="newBestTag" data-i18n="newBest" hidden>YENİ REKOR!</span>
+          <strong id="finalScore">0</strong>
+          <div class="gameOverMeta">
+            <span class="metaChip"><span data-i18n="best">En İyi</span> <b id="gameOverBestValue">0</b></span>
+            <span class="metaChip coinChip"><span class="coinIcon" aria-hidden="true"></span><b id="gameOverCoinsValue">+0</b></span>
+          </div>
+        </div>
+        <div id="gameOverMissions" class="gameOverMissions" hidden></div>
         <div id="gameOverChallenge" class="gameOverChallenge" hidden></div>
-        <button id="restartButton" class="primaryButton" type="button" data-i18n="restart">Yeniden Başlat</button>
-        <button id="gameOverMenuButton" class="secondaryButton overlaySecondaryButton" type="button" data-i18n="mainMenu">Ana Menü</button>
+        <div class="dialogActions">
+          <button id="restartButton" class="primaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-restart"/></svg><span data-i18n="restart">Yeniden Başlat</span>
+          </button>
+          <button id="gameOverMenuButton" class="secondaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span data-i18n="mainMenu">Ana Menü</span>
+          </button>
+        </div>
       </div>
     </section>
 
     <section id="retryOverlay" class="overlay retryOverlay" aria-live="assertive">
-      <div class="panel compact retryPanel">
-        <h2 data-i18n="ballStuck">Top Sıkıştı mı?</h2>
+      <div class="dialogCard retryPanel">
+        <span class="ribbon" data-i18n="ballStuck">Top Sıkıştı mı?</span>
         <p data-i18n="retryText">Son hoop'a dön ve oynamaya devam et.</p>
-        <button id="retryButton" class="primaryButton" type="button" data-i18n="retry">Tekrar Dene</button>
-        <button id="retryMenuButton" class="secondaryButton overlaySecondaryButton" type="button" data-i18n="mainMenu">Ana Menü</button>
+        <div class="dialogActions">
+          <button id="retryButton" class="primaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-restart"/></svg><span data-i18n="retry">Tekrar Dene</span>
+          </button>
+          <button id="retryMenuButton" class="secondaryButton" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span data-i18n="mainMenu">Ana Menü</span>
+          </button>
+        </div>
       </div>
     </section>
 
-    <section id="shopDialogOverlay" class="overlay shopDialogOverlay" role="dialog" aria-modal="true" aria-labelledby="shopDialogTitle" aria-describedby="shopDialogText" aria-hidden="true" inert>
-      <div class="panel compact shopDialogPanel">
+    <section id="shopDialogOverlay" class="overlay shopDialogOverlay dimOverlay" role="dialog" aria-modal="true" aria-labelledby="shopDialogTitle" aria-describedby="shopDialogText" aria-hidden="true" inert>
+      <div class="dialogCard shopDialogPanel">
         <div id="shopDialogPreview" class="shopDialogPreview"></div>
         <h3 id="shopDialogTitle"></h3>
         <p id="shopDialogText" class="shopDialogText"></p>
@@ -189,37 +320,42 @@
       </span>
     </div>
 
-    <div id="hud" class="hud" aria-live="polite">
-      <div class="scoreBlock">
-        <span data-i18n="score">Skor</span>
-        <strong id="scoreValue">0</strong>
+    <div id="tipBanner" class="tipBanner" role="status" aria-live="polite">
+      <span class="tipIcon" aria-hidden="true">!</span>
+      <span id="tipText"></span>
+    </div>
+
+    <div id="hud" class="hud hidden" aria-live="polite">
+      <div class="hudTop">
+        <button id="menuButton" class="roundButton hudPause" type="button" data-i18n-aria-label="menu" aria-label="Menü">
+          <svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg>
+        </button>
+        <div class="hudScore">
+          <strong id="scoreValue">0</strong>
+          <span class="hudBest"><span data-i18n="best">En İyi</span> <b id="bestValue">0</b></span>
+        </div>
+        <div id="coinHud" class="pill coinPill hudCoins" role="status" aria-live="polite">
+          <span class="coinIcon" aria-hidden="true"></span>
+          <strong id="coinHudValue">0</strong>
+        </div>
       </div>
-      <div class="scoreBlock">
-        <span data-i18n="best">En İyi</span>
-        <strong id="bestValue">0</strong>
-      </div>
-      <div class="hudActions">
-        <button id="menuButton" class="iconButton" type="button" data-i18n="menu">Menü</button>
-      </div>
-      <div id="timedShotHud" class="timedShotHud" role="timer" aria-live="off" aria-atomic="true" hidden>
-        <span id="timedShotLabel" data-i18n="shot">ATIŞ</span>
-        <strong id="timedShotValue">0</strong>
-      </div>
-      <div id="coinHud" class="coinHud" role="status" aria-live="polite">
-        <span class="coinIcon" aria-hidden="true"></span>
-        <span data-i18n="coins">Coin</span>
-        <strong id="coinHudValue">0</strong>
-      </div>
-      <div id="streakHud" class="streakHud" aria-hidden="true" hidden>
-        <span class="streakFlame"></span>
-        <span class="streakPips"></span>
-        <strong class="streakCount"></strong>
+      <div class="hudStack">
+        <div id="timedShotHud" class="timedShotHud" role="timer" aria-live="off" aria-atomic="true" hidden>
+          <span id="timedShotLabel" data-i18n="shot">ATIŞ</span>
+          <strong id="timedShotValue">0</strong>
+        </div>
+        <div id="streakHud" class="streakHud" aria-hidden="true" hidden>
+          <span class="streakFlame"></span>
+          <span class="streakPips"></span>
+          <strong class="streakCount"></strong>
+        </div>
       </div>
     </div>
   </main>
   <script src="physics.js?v=release-4f149ee32bc8"></script>
   <script src="ballArt.js?v=release-90beb5995365"></script>
   <script src="hoopArt.js?v=release-40065425f54f"></script>
-  <script src="game.js?v=release-8f29a677a1c4"></script>
+  <script src="themeArt.js?v=release-f6c2b4c8f8f6"></script>
+  <script src="game.js?v=release-3b66be0a4bb7"></script>
 </body>
 </html>
