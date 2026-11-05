@@ -6,6 +6,8 @@ export const gamePath = new URL('../../game.js', import.meta.url);
 export const physicsSource = readFileSync(new URL('../../physics.js', import.meta.url), 'utf8');
 export const ballArtSource = readFileSync(new URL('../../ballArt.js', import.meta.url), 'utf8');
 export const hoopArtSource = readFileSync(new URL('../../hoopArt.js', import.meta.url), 'utf8');
+export const progressionSource = readFileSync(new URL('../../progression.js', import.meta.url), 'utf8');
+export const obstaclesSource = readFileSync(new URL('../../obstacles.js', import.meta.url), 'utf8');
 
 export function loadPhysics() {
   const sandbox = vm.createContext({});
@@ -51,6 +53,8 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
   vm.runInContext(physicsSource, sandbox);
   vm.runInContext(ballArtSource, sandbox);
   vm.runInContext(hoopArtSource, sandbox);
+  vm.runInContext(progressionSource, sandbox);
+  vm.runInContext(obstaclesSource, sandbox);
   const cutoff = source.indexOf('  window.addEventListener("resize"');
   if (cutoff < 0) throw new Error('Cannot find game bootstrap boundary');
   vm.runInContext(source.slice(0, cutoff) + '\n globalThis.evaluateGame = code => eval(code);\n})();', sandbox);

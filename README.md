@@ -21,11 +21,13 @@ The game works with mouse and touch controls. In my experience a mouse gives the
 3. Release to shoot and land the ball in the next hoop.
 4. Keep climbing as high as you can.
 
-New players get a short interactive tutorial on their first game. It can be replayed any time from **Settings**.
+The first launch opens a short lesson: a ghost hand shows the pull, you score once, then sink a clean swish, and the game takes you to the main menu. It can be replayed any time from **Settings**.
 
 ## Features
 
-- **Flick physics:** drag-and-release shots with a preview that matches the real flight exactly.
+- **Flick physics:** drag-and-release shots with a preview that matches the real flight exactly. The hoop holding the ball turns to face your shot in any direction.
+- **A climb that gets harder:** a new challenge arrives at fixed scores and shows up alone first: tilted, sliding, swinging, rising, orbiting and spinning hoops, blocking bars, bumpers, sliding bars and spinners. Every moving hazard shows its full path before you shoot.
+- **High drops:** a basket that falls in from very high scores one extra point.
 - **Swish streaks:** clean shots that don't touch the rim score more, and a chain of them sets the ball on fire.
 - **Bank shots:** bounce the ball off a wall for double points.
 - **Timed shots:** later in a run some hoops come with a countdown.

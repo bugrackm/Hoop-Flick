@@ -260,6 +260,10 @@ test('real game loop keeps collisions, moving hoops, countdown and loss timing i
       source.role = HOOP_ROLE.CURRENT;
       hoops = [source, target];
       Object.assign(ball, { x: 128, y: 593, vx: 500, vy: -900, held: false, launchHoopId: 0, angularVelocity: 6 });
+      // A real release: the launcher turns to the shot and the ball starts inside its net.
+      ball.launchFrame = getLaunchFrame(source, { x: 500, y: -900 });
+      ball.launchInsideNet = true;
+      turnHoopAboutRest(source, ball.launchFrame.rotation);
       snapBallRender();
       timedShotActive = true;
       timedShotRemainingSeconds = 10;
@@ -534,7 +538,7 @@ test('a basket plays one combined score sound, not stacked cues', () => {
     JSON.stringify(played);
   `));
   assert.deepEqual(sounds.map(sound => sound.name), ['score']);
-  assert.deepEqual(sounds[0].detail, { perfect: true, wall: true, streak: 4 });
+  assert.deepEqual(sounds[0].detail, { perfect: true, wall: true, streak: 4, highArc: false });
 });
 
 test('hit-stop delays fixed steps without changing them, and presentation keeps running', () => {

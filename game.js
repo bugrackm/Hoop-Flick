@@ -190,8 +190,28 @@
   // net a little, so diagonal shots up to about 45° still leave cleanly.
   const LAUNCH_NET_TOP_Y = 7;
   const LAUNCH_NET_BOTTOM_Y = 52;
+  // Net side line shared by collideNet, the launch-net walls and the launcher clear rule:
+  // from (±(w/2 − NET_SIDE_TOP_INSET), LAUNCH_NET_TOP_Y) to (±NET_SIDE_BOTTOM_X, LAUNCH_NET_BOTTOM_Y).
+  const NET_SIDE_TOP_INSET = 8;
+  const NET_SIDE_BOTTOM_X = 14;
+  const NET_SEGMENT_GAP = 2.5;
+  // Underside of the net: a ball rising from below inside this band is kicked back down.
+  const NET_UNDERSIDE_TOP_Y = 36;
+  const NET_UNDERSIDE_HALF_WIDTH = 34;
   const LAUNCH_NET_MARGIN = 4;
   const LAUNCH_NET_BOUNCE = 0.54;
+  // Launcher: while aiming, the hoop holding the ball turns its mouth toward the shot (any
+  // direction), pivoting around the ball. The turn is drawn only; the physics hoop stays put and
+  // the launch-net walls/catch use the aim frame captured at release, so preview == flight.
+  const LAUNCHER_SPRING = Object.freeze({ stiffness: 340, damping: 17, maxStep: 1 / 240 });
+  const LAUNCHER_MIN_AIM_PULL = 5;
+  const LAUNCHER_POUCH_PULLBACK = 7;
+  const LAUNCHER_POUCH_STRETCH = 10;
+  const HOOP_CATCH_BOB = Object.freeze({ duration: 0.42, depth: 5 });
+  // High-arc bonus: a basket whose flight peaked this far above the target rim earns +1.
+  // About the top 15 % of all shots that can score a typical gap (measured on a fine pull grid).
+  const HIGH_ARC_HEIGHT = 165;
+  const HIGH_ARC_BONUS = 1;
   const BALL_SETTLE_DURATION = 0.24;
   const BALL_SETTLE_INPUT_DELAY = 0.1;
   const TIMED_SHOT_START_SCORE = 100;
@@ -204,7 +224,6 @@
   const NET_ANIMATION_DURATION = 0.56;
   const HOOP_RELEASE_DURATION = 0.34;
   const HOOP_SPAWN_DURATION = 0.36;
-  const HOOP_AIM_MAX_OFFSET = 9;
   const SHOT_RING_DURATION = 0.3;
   const NEW_HIGH_SCORE_DURATION = 1.35;
   const NEW_HIGH_SCORE_CONFETTI_COUNT = 22;
@@ -217,8 +236,6 @@
   const MAX_PARTICLES = 160;
   const MAX_SHOT_RINGS = 12;
   const SPAWN_ATTEMPTS = 14;
-  const MIN_HOOP_TILT = 2.5 * (Math.PI / 180);
-  const MAX_HOOP_TILT = 7 * (Math.PI / 180);
 
   const TUTORIAL_LAST_TARGET_ID = 4;
   const VARIETY_CHANCE_FULL_SCORE = 50;
@@ -246,29 +263,46 @@
   const REACHABILITY_PULL_RATIOS = [0.6, 0.72, 0.82, 0.92, 1];
   const REACHABILITY_ELEVATION_DEGREES = [48, 56, 64, 72, 78, 84];
   const REACHABILITY_MAX_TIME = 1.65;
+  // Obstacle fairness uses a fan of exact scoring shots, one per launch elevation, from flat
+  // shots to high lobs, so "blocks one, leaves others clean" can be decided.
+  const OBSTACLE_FAN_ELEVATIONS = Object.freeze(Array.from({ length: 30 }, (_, i) => 30 + i * 2));
+  const OBSTACLE_FAN_MIN_SPEED = MAX_PULL * 0.3 * LAUNCH_POWER_SCALE;
 
-  const CHALLENGE_COSTS = {
-    wide: 1,
-    edge: 1,
-    longShot: 1,
-    moving: 1,
-    board: 1,
-    tilt: 1
-  };
-
-  const DIFFICULTY_TIERS = [
-    { name: "start", minScore: 0, maxScore: 7, maxBudget: 0, weights: { easy: 1, medium: 0, hard: 0 } },
-    { name: "light", minScore: 8, maxScore: 14, maxBudget: 1, weights: { easy: 0.6, medium: 0.4, hard: 0 } },
-    { name: "medium", minScore: 15, maxScore: 29, maxBudget: 2, weights: { easy: 0.4, medium: 0.5, hard: 0.1 } },
-    { name: "advanced", minScore: 30, maxScore: 49, maxBudget: 2, weights: { easy: 0.3, medium: 0.5, hard: 0.2 } },
-    { name: "mastery", minScore: 50, maxScore: Infinity, maxBudget: 3, weights: { easy: 0.25, medium: 0.45, hard: 0.3 } }
-  ];
-
-  const DIFFICULTY_BUDGET_CAPS = {
-    easy: 0,
-    medium: 1,
-    hard: 3
-  };
+  // Difficulty ladder (progression.js): stages, mechanic unlocks/params and transition budgets.
+  const Progression = globalThis.HoopFlickProgression;
+  const Obstacles = globalThis.HoopFlickObstacles;
+  const DIFFICULTY_TIERS = Progression.DIFFICULTY_TIERS;
+  // Every hard geometry and every feature is one challenge unit.
+  const CHALLENGE_COST = 1;
+  // An intro hoop (a mechanic's first appearance in a run) is followed by this many calm ones.
+  const INTRO_BREATHER_TRANSITIONS = 2;
+  const INTRO_MAX_FAILURES = 2;
+  // A hard transition with a single feature shows that feature stronger.
+  const HARD_INTENSITY_BONUS = 0.25;
+  const NO_FEATURES = Object.freeze({ motion: null, turn: null, board: false, obstacle: null });
+  // Smallest motion worth showing; below this the hoop just looks jittery.
+  const MIN_MOVE_AMPLITUDE = Object.freeze({ horizontal: 16, orbit: 10 });
+  const CHALLENGED_MIN_VERTICAL_GAP = 142;
+  const CHALLENGED_LIFT_MAX_GAP = 222;
+  const SWING_FACING_TILT = 8 * (Math.PI / 180);
+  // Obstacles sit on a verified shot (so they matter) but leave other verified shots clean.
+  const OBSTACLE_ATTEMPTS = 6;
+  const OBSTACLE_CLEAN_MARGIN = BALL_RADIUS + 5;
+  const OBSTACLE_HOOP_CLEARANCE = BALL_RADIUS * 2 + 8;
+  const OBSTACLE_WALL_GAP = BALL_RADIUS * 2 + 6;
+  // A moving obstacle is checked at this many release moments over its cycle; a clean shot must
+  // exist at least at OBSTACLE_OPEN_SHARE of them (waiting for the gap is the mechanic).
+  const OBSTACLE_PHASE_SAMPLES = 8;
+  const OBSTACLE_OPEN_SHARE = 0.5;
+  // The timing check follows the real motion, so it needs less safety margin than the static one.
+  const OBSTACLE_TIMED_CLEAN_MARGIN = BALL_RADIUS + 3;
+  // At most this many obstacle placements are checked per new hoop, so a basket never hitches.
+  const OBSTACLE_CHECKS_PER_SPAWN = 10;
+  const OBSTACLE_CHECKS_RETRY = 6;
+  // A static obstacle hangs at the apex of a lob that peaks this far above the target rim.
+  const OBSTACLE_LOB_APEX = Object.freeze([60, 140]);
+  const OBSTACLE_FLASH_DURATION = 0.18;
+  const OBSTACLE_SQUASH_DURATION = 0.32;
 
   const SPAWN_GAP_PROFILES = {
     tutorial: { minX: 98, maxX: 130, minY: 166, maxY: 188 },
@@ -927,7 +961,8 @@
     games: Object.freeze({ mode: "sum", targets: [3, 5, 8], icon: "▶" }),
     runScore: Object.freeze({ mode: "max", targets: null, icon: "★" }),
     perfectChain: Object.freeze({ mode: "max", targets: [2, 3, 5], icon: "≫" }),
-    ignitions: Object.freeze({ mode: "sum", targets: [1, 2, 4], icon: "♨" })
+    ignitions: Object.freeze({ mode: "sum", targets: [1, 2, 4], icon: "♨" }),
+    highArcs: Object.freeze({ mode: "sum", targets: [2, 4, 7], icon: "▲" })
   });
   const MISSION_TYPE_IDS = Object.freeze(Object.keys(MISSION_TYPES));
   const MISSION_REWARDS = Object.freeze([15, 25, 40]);
@@ -1347,12 +1382,17 @@
       mission_runScore: "Tek oyunda {n} puana ulaş",
       mission_perfectChain: "Üst üste {n} deliksiz at",
       mission_ignitions: "Topu {n} kez alev aldır",
+      mission_highArcs: "Yüksekten {n} basket at",
       tip_aim: "Topu geri çek, nişan al ve bırak!",
       tip_perfect: "Çembere değmeden sok: DELİKSİZ! Seri yaptıkça puan artar.",
       tip_flame: "Deliksizleri art arda yap, top alev alsın!",
       tip_wall: "Duvardan sektirerek at: puan ×2!",
       tip_coin: "Coin'leri topla; yeni toplar ve temalar aç!",
       tip_timed: "Zamanlı atış! Süre bitmeden basket yap.",
+      tip_lessonSwish: "Güzel! Şimdi çembere değmeden sok: DELİKSİZ!",
+      tip_lessonRetry: "Çembere değdi. Bir daha dene: değmeden sok!",
+      tip_lessonDone: "Deliksiz! Hazırsın, iyi oyunlar.",
+      highArc: "Yüksek",
       tutorialReplay: "Eğitimi Tekrarla",
       tutorialReady: "bir sonraki oyunda başlar",
       replay: "Başlat",
@@ -1551,12 +1591,17 @@
       mission_runScore: "Reach {n} points in one game",
       mission_perfectChain: "Swish {n} in a row",
       mission_ignitions: "Set the ball on fire {n} times",
+      mission_highArcs: "Score {n} high drops",
       tip_aim: "Pull the ball back, aim and let go!",
       tip_perfect: "Miss the rim for a SWISH! Chains score more.",
       tip_flame: "Chain swishes to set the ball on fire!",
       tip_wall: "Bank it off a wall: points ×2!",
       tip_coin: "Grab coins to unlock balls and themes!",
       tip_timed: "Timed shot! Score before the clock runs out.",
+      tip_lessonSwish: "Nice! Now score without touching the rim: a SWISH!",
+      tip_lessonRetry: "It touched the rim. Try again: miss the rim!",
+      tip_lessonDone: "Swish! You're ready, have fun.",
+      highArc: "High",
       tutorialReplay: "Replay Tutorial",
       tutorialReady: "starts with your next game",
       replay: "Start",
@@ -1756,7 +1801,7 @@
   let audioOutput = null;
   let noiseBuffer = null;
   let lastHapticAt = -Infinity;
-  const lastImpactFeedbackAt = { rim: -Infinity, net: -Infinity, board: -Infinity, wall: -Infinity };
+  const lastImpactFeedbackAt = { rim: -Infinity, net: -Infinity, board: -Infinity, wall: -Infinity, bumper: -Infinity };
   let userPaused = false;
   let gameBooted = false;
   let animationFrameId = null;
@@ -1786,10 +1831,16 @@
   let runBounceBaskets = 0;
   let runIgnitions = 0;
   let runCoins = 0;
-  const TUTORIAL_TIP_IDS = Object.freeze(["aim", "perfect", "flame", "wall", "coin", "timed"]);
+  // "lesson" = the first-launch tutorial run (aim + swish) is done; veterans skip it and the basics.
+  const BASIC_TIP_IDS = Object.freeze(["aim", "perfect", "flame", "wall", "coin", "timed", "lesson"]);
+  const TUTORIAL_TIP_IDS = BASIC_TIP_IDS;
+  // After the swish the lesson shows its last line for this long, then returns to the menu.
+  const LESSON_FINISH_DELAY = 1.9;
   const TIP_DURATION = 3.6;
   const GHOST_CYCLE = 2.9;
   const tutorial = { seen: new Set(), guide: null, tipQueue: [], tipId: null, tipTimer: null, basketsThisRun: 0 };
+  // The tutorial run: step "shoot" (any basket), then "swish" (a basket without touching the rim).
+  const lesson = { active: false, step: "shoot", pendingGuide: false, finishTimer: 0 };
   let achievementToastQueue = [];
   let achievementToastEntry = null;
   let achievementToastTimer = null;
@@ -1812,6 +1863,7 @@
   let scoreFeedbackText = t("nice") + " +1";
   let lastWasPerfect = false;
   let lastWasBounce = false;
+  let lastWasHighArc = false;
   let lastHoopSide = 1;
   let activePointer = null;
   let drag = null;
@@ -1841,7 +1893,11 @@
     hardStreak: 0,
     lastWasLongShot: false,
     lastWasNear: false,
-    lastWasEdge: false
+    lastWasEdge: false,
+    // Mechanics already introduced this run, and calm transitions still owed after an intro.
+    introduced: new Set(),
+    introFailures: new Map(),
+    breather: 0
   };
   const highScoreCelebration = {
     eligibleThisRun: best > 0,
@@ -1878,7 +1934,11 @@
     angularVelocity: 0,
     settle: null,
     launchHoopId: -1,
-    launchInsideNet: false
+    launchInsideNet: false,
+    // Aim frame of the last release: { x, y, rotation, cos, sin, pivotX, pivotY } (rim centre of the turned launcher).
+    launchFrame: null,
+    // Highest point (smallest y) of the current flight, for the high-arc bonus; set at release.
+    apexY: Infinity
   };
 
   const previousBallRender = { x: ball.x, y: ball.y, rotation: ball.rotation };
@@ -1994,6 +2054,10 @@
     userPaused = false;
     clearTips();
     tutorial.guide = null;
+    lesson.active = false;
+    lesson.step = "shoot";
+    lesson.pendingGuide = false;
+    lesson.finishTimer = 0;
     hitStopTimer = 0;
     settingsOrigin = "menu";
     score = 0;
@@ -2032,6 +2096,7 @@
     scoreFeedbackText = t("nice") + " +1";
     lastWasPerfect = false;
     lastWasBounce = false;
+    lastWasHighArc = false;
     lastHoopSide = 1;
     hasReachedSecondHoop = false;
     transitionHistory.lastDifficulty = "easy";
@@ -2039,6 +2104,9 @@
     transitionHistory.lastWasLongShot = false;
     transitionHistory.lastWasNear = false;
     transitionHistory.lastWasEdge = false;
+    transitionHistory.introduced.clear();
+    transitionHistory.introFailures.clear();
+    transitionHistory.breather = 0;
     particles = [];
     shotRings = [];
     resetCoinRun();
@@ -2089,11 +2157,14 @@
   }
 
   function makeHoop(x, y, id, sourceHoop, transitionPlan) {
-    const difficulty = clamp(score / 30, 0, 1);
-    const features = transitionPlan?.features || { moving: false, board: false, tilt: false };
-    const moving = Boolean(features.moving);
-    const board = Boolean(features.board) && !moving;
-    return {
+    const features = transitionPlan?.features || NO_FEATURES;
+    const params = transitionPlan?.params || {};
+    const motion = features.motion;
+    const turn = features.turn;
+    const board = Boolean(features.board) && !motion && !turn;
+    const motionParams = motion ? params[motion] || {} : {};
+    const turnParams = turn ? params[turn] || {} : {};
+    const hoop = {
       id,
       x,
       y,
@@ -2103,13 +2174,24 @@
       boardW: 74,
       boardH: 52,
       role: HOOP_ROLE.INACTIVE,
-      moving,
+      moving: Boolean(motion),
       board,
       sourceX: sourceHoop ? sourceHoop.x : null,
-      movementType: moving && id % 8 === 0 ? "vertical" : "horizontal",
-      moveAmplitude: moving ? random(22, 34) : 0,
+      // horizontal (slide), vertical (lift) or orbit; amplitude doubles as the orbit radius.
+      movementType: motion === "lift" ? "vertical" : motion === "orbit" ? "orbit" : "horizontal",
+      moveAmplitude: motion ? getFittedMoveAmplitude(motion, x, motionParams.amplitude ?? motionParams.radius ?? 0) : 0,
+      moveSpeed: motion ? motionParams.speed : 1.8,
       movePhase: Math.random() * Math.PI * 2,
-      rotation: getDirectionalHoopRotation(x, id, sourceHoop, difficulty, moving || board, features.tilt),
+      // swing: rotation = baseRotation + sin(t·speed + phase)·amplitude; spin: baseRotation + direction·speed·t.
+      turnType: turn === "swing" || turn === "spin" ? turn : null,
+      turnAmplitude: turn === "swing" ? (turnParams.degrees || 0) * (Math.PI / 180) : 0,
+      turnSpeed: turn === "swing" || turn === "spin" ? turnParams.speed || 0 : 0,
+      turnPhase: Math.random() * Math.PI * 2,
+      turnDirection: Math.random() < 0.5 ? -1 : 1,
+      baseRotation: 0,
+      rotation: 0,
+      obstacle: null,
+      intro: transitionPlan?.intro || null,
       spawnProgress: 0,
       entranceTimer: 0,
       netAnimation: 0,
@@ -2118,24 +2200,60 @@
       releaseDirectionY: -1,
       releaseStrength: 0
     };
+    if (turn === "tilt") hoop.baseRotation = getFacingTilt(x, sourceHoop, turnParams.degrees || 0);
+    else if (turn === "swing") hoop.baseRotation = getFacingTilt(x, sourceHoop, SWING_FACING_TILT * (180 / Math.PI));
+    else if (turn === "spin") hoop.baseRotation = hoop.turnPhase;
+    hoop.rotation = getHoopTurnAt(hoop, simulationTime);
+    if (hoop.moving) applyHoopMotion(hoop, simulationTime);
+    return hoop;
   }
 
-  function getDirectionalHoopRotation(targetX, id, sourceHoop, difficulty, hasOtherChallenge, tiltEnabled) {
-    if (!tiltEnabled || id < 2 || !sourceHoop || hasOtherChallenge || !shouldTiltHoop(id, difficulty)) return 0;
+  // A slide or orbit never pushes the hoop past the wall clearance: the amplitude shrinks to fit.
+  function getFittedMoveAmplitude(motion, x, amplitude) {
+    if (motion === "lift") return amplitude;
+    const minX = WALL_INSET + HOOP_WALL_CLEARANCE;
+    const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE;
+    return Math.max(0, Math.min(amplitude, x - minX, maxX - x));
+  }
+
+  // Tilt toward the hoop the ball comes from, so the mouth faces the incoming shot. Longer
+  // sideways gaps tilt more; `degrees` is the stage's current maximum.
+  function getFacingTilt(targetX, sourceHoop, degrees) {
+    if (!sourceHoop) return 0;
     const deltaX = sourceHoop.x - targetX;
     if (Math.abs(deltaX) < 1) return 0;
     const distanceRatio = clamp(Math.abs(deltaX) / 150, 0, 1);
-    const allowedMax = MIN_HOOP_TILT + (MAX_HOOP_TILT - MIN_HOOP_TILT) * difficulty;
-    const magnitude = MIN_HOOP_TILT + (allowedMax - MIN_HOOP_TILT) * distanceRatio;
+    const magnitude = degrees * (Math.PI / 180) * (0.55 + 0.45 * distanceRatio);
     return Math.sign(deltaX) * magnitude;
   }
 
-  function shouldTiltHoop(id, difficulty) {
-    if (id < 2 || difficulty < 0.2) return false;
-    return id % 3 === 2 || (difficulty >= 0.7 && id % 5 === 4);
+  // Deterministic in simulation time, so the same hoop pose occurs at any frame rate.
+  function getHoopTurnAt(hoop, time) {
+    if (hoop.turnType === "swing") return hoop.baseRotation + Math.sin(time * hoop.turnSpeed + hoop.turnPhase) * hoop.turnAmplitude;
+    if (hoop.turnType === "spin") return normalizeAngle(hoop.baseRotation + hoop.turnDirection * hoop.turnSpeed * time);
+    return hoop.baseRotation;
+  }
+
+  function applyHoopMotion(hoop, time) {
+    const angle = time * (hoop.moveSpeed ?? 1.8) + hoop.movePhase;
+    if (hoop.movementType === "vertical") {
+      hoop.x = hoop.baseX;
+      hoop.y = hoop.baseY + Math.sin(angle) * hoop.moveAmplitude;
+    } else if (hoop.movementType === "orbit") {
+      hoop.x = hoop.baseX + Math.cos(angle) * hoop.moveAmplitude;
+      hoop.y = hoop.baseY + Math.sin(angle) * hoop.moveAmplitude;
+    } else {
+      hoop.x = clamp(
+        hoop.baseX + Math.sin(angle) * hoop.moveAmplitude,
+        WALL_INSET + HOOP_WALL_CLEARANCE,
+        WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE
+      );
+      hoop.y = hoop.baseY;
+    }
   }
 
   function placeBallInHoop(hoop) {
+    if (hoop.rotation !== 0) turnHoopAboutRest(hoop, 0);
     const restingPoint = hoopToWorld(hoop, 0, NET_REST_Y);
     ball.x = restingPoint.x;
     ball.y = restingPoint.y;
@@ -2153,17 +2271,21 @@
     ball.settle = null;
     ball.launchHoopId = -1;
     ball.launchInsideNet = false;
+    ball.launchFrame = null;
+    ball.apexY = ball.y;
     airborneTime = 0;
     snapBallRender();
     if (debugShots) debugShots.recording = false;
   }
 
-  function startGame() {
+  // `automatic` = the first launch opens straight into the lesson, before any tap unlocks audio.
+  function startGame(automatic) {
     if (!gameBooted) return;
-    ensureAudio();
+    if (!automatic) ensureAudio();
     resetGame(false);
-    playGameSound("start");
-    beginAimGuide();
+    if (!automatic) playGameSound("start");
+    tutorial.basketsThisRun = 0;
+    if (!isLessonDone()) beginLesson();
   }
 
   function beginGameOver() {
@@ -2295,16 +2417,14 @@
   }
 
   function getDifficultyTier(scoreValue, targetId) {
-    if (targetId <= TUTORIAL_LAST_TARGET_ID) {
+    if (targetId <= TUTORIAL_LAST_TARGET_ID || lesson.active) {
       return {
         ...DIFFICULTY_TIERS[0],
         name: "tutorial",
         tutorial: true
       };
     }
-    const tier = DIFFICULTY_TIERS.find((entry) => scoreValue >= entry.minScore && scoreValue <= entry.maxScore)
-      || DIFFICULTY_TIERS[DIFFICULTY_TIERS.length - 1];
-    return { ...tier, tutorial: false };
+    return { ...Progression.getDifficultyTier(scoreValue), tutorial: false };
   }
 
   function chooseTransitionDifficulty(tier) {
@@ -2357,57 +2477,152 @@
     return nearOffCooldown && Math.random() < NORMAL_NEAR_MAX_SHARE ? "normalNear" : "normalFar";
   }
 
-  function chooseTargetChallenge(targetId, geometryName, remainingBudget) {
-    const features = { moving: false, board: false, tilt: false };
-    if (
-      remainingBudget < 1
-      || geometryName === "longShot"
-      || geometryName === "edge"
-    ) return features;
-
-    const difficulty = clamp(score / 30, 0, 1);
-    const movingEligible = score >= 9 && targetId % 4 === 0;
-    const boardEligible = score >= 7 && targetId % 3 === 0 && !movingEligible;
-    const tiltEligible = shouldTiltHoop(targetId, difficulty);
-
-    if (geometryName === "wideVertical" || geometryName === "wideBalanced") return features;
-    if (geometryName === "wideHorizontal") {
-      if (boardEligible) features.board = true;
-      else if (tiltEligible) features.tilt = true;
-      return features;
+  // The first intro mechanic this run has unlocked but not shown yet (one intro at a time).
+  // An intro that failed INTRO_MAX_FAILURES times steps aside so later intros are not blocked; once
+  // every pending intro has, they all get a fresh try.
+  function getPendingIntro() {
+    let pending = 0;
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (const mechanic of Progression.MECHANIC_ORDER) {
+        const entry = Progression.MECHANICS[mechanic];
+        if (!entry.intro || score < entry.unlock || transitionHistory.introduced.has(mechanic)) continue;
+        if (entry.group === "block" && !Obstacles) continue;
+        pending += 1;
+        if ((transitionHistory.introFailures.get(mechanic) || 0) < INTRO_MAX_FAILURES) return mechanic;
+      }
+      if (!pending) return null;
+      transitionHistory.introFailures.clear();
     }
+    return null;
+  }
 
-    if (movingEligible) features.moving = true;
-    else if (boardEligible) features.board = true;
-    else if (tiltEligible) features.tilt = true;
+  function pickWeighted(entries) {
+    const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+    if (total <= 0) return null;
+    let roll = Math.random() * total;
+    for (const entry of entries) {
+      roll -= entry.weight;
+      if (roll < 0) return entry.mechanic;
+    }
+    return entries[entries.length - 1].mechanic;
+  }
+
+  function canAddFeature(features, mechanic, geometryName) {
+    const entry = Progression.MECHANICS[mechanic];
+    if (!entry || score < entry.unlock) return false;
+    if (entry.group === "block" && !Obstacles) return false;
+    // Wide sideways gaps keep their old rule: a board or a tilt at most.
+    if (geometryName === "wideHorizontal" && mechanic !== "board" && mechanic !== "tilt") return false;
+    if (entry.group === "board") return !features.board && !features.motion && !features.turn;
+    if (features.board && (entry.group === "move" || entry.group === "turn")) return false;
+    if (entry.group === "move") return !features.motion;
+    if (entry.group === "turn") return !features.turn;
+    if (entry.group === "block") return !features.obstacle;
+    return false;
+  }
+
+  function addFeature(features, mechanic) {
+    const group = Progression.MECHANICS[mechanic].group;
+    if (group === "move") features.motion = mechanic;
+    else if (group === "turn") features.turn = mechanic;
+    else if (group === "block") features.obstacle = mechanic;
+    else if (group === "board") features.board = true;
+  }
+
+  function getFeatureList(features) {
+    return [features.motion, features.turn, features.obstacle, features.board ? "board" : null].filter(Boolean);
+  }
+
+  // Weighted by the ladder: the newest mechanic is in the spotlight for a while after its unlock.
+  function chooseTargetFeatures(geometryName, remainingBudget) {
+    const features = { ...NO_FEATURES };
+    if (remainingBudget < CHALLENGE_COST || geometryName === "longShot" || geometryName === "edge") return features;
+    if (geometryName === "wideVertical" || geometryName === "wideBalanced") return features;
+    const candidates = Progression.getUnlockedMechanics(score)
+      .filter((mechanic) => canAddFeature(features, mechanic, geometryName))
+      .map((mechanic) => ({ mechanic, weight: Progression.getMechanicWeight(mechanic, score) }));
+    const first = pickWeighted(candidates);
+    if (!first) return features;
+    addFeature(features, first);
+    // Two features only on a hard transition high on the ladder, and only in approved pairs.
+    if (remainingBudget >= CHALLENGE_COST * 2 && score >= Progression.COMBO_SCORE && geometryName.startsWith("normal")) {
+      const partners = Progression.getUnlockedMechanics(score)
+        .filter((mechanic) => Progression.canCombine(first, mechanic) && canAddFeature(features, mechanic, geometryName))
+        .map((mechanic) => ({ mechanic, weight: Progression.getMechanicWeight(mechanic, score) }));
+      const second = pickWeighted(partners);
+      if (second) addFeature(features, second);
+    }
     return features;
   }
 
-  function getTransitionBudgetCost(plan) {
-    return Number(plan.wide) * CHALLENGE_COSTS.wide
-      + Number(plan.edge) * CHALLENGE_COSTS.edge
-      + Number(plan.longShot) * CHALLENGE_COSTS.longShot
-      + Number(plan.features.moving) * CHALLENGE_COSTS.moving
-      + Number(plan.features.board) * CHALLENGE_COSTS.board
-      + Number(plan.features.tilt) * CHALLENGE_COSTS.tilt;
+  function buildFeatureParams(features, intro, hard) {
+    const params = {};
+    const list = getFeatureList(features);
+    for (const mechanic of list) {
+      const boosted = hard && list.length === 1 && !intro;
+      // A lone feature on a hard transition plays like a later stage.
+      const scoreForParams = boosted ? score + Progression.RAMP_SCORE * HARD_INTENSITY_BONUS : score;
+      params[mechanic] = Progression.getMechanicParams(mechanic, scoreForParams, Math.random, intro === mechanic);
+    }
+    return params;
   }
 
-  function createTransitionPlan(source, targetId) {
+  // 0 below the first obstacle stage, then up to 85 % by the shot clock and beyond.
+  function getFeatureFirstChance() {
+    return clamp((score - Progression.MECHANICS.bar.unlock) / (Progression.SHOT_CLOCK_SCORE - Progression.MECHANICS.bar.unlock), 0, 1) * 0.85;
+  }
+
+  function getTransitionBudgetCost(plan) {
+    return (Number(plan.wide) + Number(plan.edge) + Number(plan.longShot) + getFeatureList(plan.features).length) * CHALLENGE_COST;
+  }
+
+  function createTransitionPlan(source, targetId, options) {
     const tier = getDifficultyTier(score, targetId);
-    const difficulty = chooseTransitionDifficulty(tier);
-    const budgetLimit = Math.min(tier.maxBudget, DIFFICULTY_BUDGET_CAPS[difficulty]);
     const direction = getSpawnDirection(source);
     const availableHorizontalGap = getAvailableHorizontalGap(source, direction);
+
+    // A newly unlocked mechanic first appears alone, on a plain gap, at its gentlest.
+    const intro = !tier.tutorial && !options?.skipIntro && transitionHistory.breather <= 0 ? getPendingIntro() : null;
+    if (intro) {
+      const features = { ...NO_FEATURES };
+      addFeature(features, intro);
+      const geometryName = "normalFar";
+      const plan = {
+        tier: tier.name,
+        difficulty: "medium",
+        budgetLimit: CHALLENGE_COST,
+        budget: 0,
+        geometryName,
+        profile: SPAWN_GAP_PROFILES[geometryName],
+        direction,
+        wide: false,
+        edge: false,
+        longShot: false,
+        fallback: false,
+        features,
+        params: buildFeatureParams(features, intro, false),
+        intro
+      };
+      plan.budget = getTransitionBudgetCost(plan);
+      return plan;
+    }
+
+    const difficulty = transitionHistory.breather > 0 ? "easy" : chooseTransitionDifficulty(tier);
+    const budgetLimit = difficulty === "easy" ? 0 : difficulty === "medium" ? Math.min(tier.maxBudget, CHALLENGE_COST) : tier.maxBudget;
     let geometryName = tier.tutorial ? "tutorial" : chooseNormalGeometry();
     let longShot = false;
     let wide = false;
     let edge = false;
+    // Higher on the ladder the budget goes to mechanics first; the old geometry variety
+    // (wide, edge and long gaps) keeps the rest, so early play feels like before.
+    const featureFirst = !tier.tutorial && budgetLimit >= CHALLENGE_COST && Math.random() < getFeatureFirstChance();
 
     if (
       !tier.tutorial
+      && !featureFirst
       && !hasBoard(source)
       && score >= EDGE_TRANSITION_UNLOCK_SCORE
-      && budgetLimit >= CHALLENGE_COSTS.edge
+      && budgetLimit >= CHALLENGE_COST
       && (EDGE_TRANSITION_COOLDOWN <= 0 || !transitionHistory.lastWasEdge)
       && Math.random() < getVarietyChance(EDGE_TRANSITION_BASE_CHANCE, EDGE_TRANSITION_MAX_CHANCE, EDGE_TRANSITION_UNLOCK_SCORE)
     ) {
@@ -2415,7 +2630,7 @@
       edge = true;
     }
 
-    if (!edge && !tier.tutorial && budgetLimit >= CHALLENGE_COSTS.longShot) {
+    if (!edge && !featureFirst && !tier.tutorial && budgetLimit >= CHALLENGE_COST) {
       const longShotAvailable = availableHorizontalGap >= SPAWN_GAP_PROFILES.longShot.minX;
       const longShotOffCooldown = LONG_SHOT_COOLDOWN_TRANSITIONS <= 0 || !transitionHistory.lastWasLongShot;
       if (
@@ -2429,7 +2644,7 @@
       }
     }
 
-    if (!edge && !longShot && !tier.tutorial && budgetLimit >= CHALLENGE_COSTS.wide && score >= WIDE_GAP_UNLOCK_SCORE) {
+    if (!edge && !longShot && !featureFirst && !tier.tutorial && budgetLimit >= CHALLENGE_COST && score >= WIDE_GAP_UNLOCK_SCORE) {
       if (Math.random() < getVarietyChance(WIDE_GAP_BASE_CHANCE, WIDE_GAP_MAX_CHANCE, WIDE_GAP_UNLOCK_SCORE)) {
         const wideGeometry = chooseWideGeometry(availableHorizontalGap);
         if (wideGeometry) {
@@ -2439,10 +2654,8 @@
       }
     }
 
-    const geometryCost = Number(wide) * CHALLENGE_COSTS.wide
-      + Number(edge) * CHALLENGE_COSTS.edge
-      + Number(longShot) * CHALLENGE_COSTS.longShot;
-    const features = chooseTargetChallenge(targetId, geometryName, budgetLimit - geometryCost);
+    const geometryCost = (Number(wide) + Number(edge) + Number(longShot)) * CHALLENGE_COST;
+    const features = tier.tutorial ? { ...NO_FEATURES } : chooseTargetFeatures(geometryName, budgetLimit - geometryCost);
     const plan = {
       tier: tier.name,
       difficulty,
@@ -2455,7 +2668,9 @@
       edge,
       longShot,
       fallback: false,
-      features
+      features,
+      params: buildFeatureParams(features, null, difficulty === "hard"),
+      intro: null
     };
     plan.budget = getTransitionBudgetCost(plan);
     return plan;
@@ -2474,7 +2689,9 @@
       edge: false,
       longShot: false,
       fallback: true,
-      features: { moving: false, board: false, tilt: false }
+      features: { ...NO_FEATURES },
+      params: {},
+      intro: null
     };
   }
 
@@ -2488,41 +2705,93 @@
       const yLift = random(plan.profile.minY, plan.profile.maxY);
       return makeHoop(x, source.y - yLift, targetId, source, plan);
     }
-    const minX = WALL_INSET + HOOP_WALL_CLEARANCE;
-    const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE;
+    // A slide or orbit needs room for its swing: keep its centre that far from the clearance line.
+    const motion = plan.features.motion;
+    const swing = motion === "slide" || motion === "orbit"
+      ? Math.max(MIN_MOVE_AMPLITUDE[motion === "slide" ? "horizontal" : "orbit"], (plan.params[motion]?.amplitude ?? plan.params[motion]?.radius ?? 0) * 0.75)
+      : 0;
+    const minX = WALL_INSET + HOOP_WALL_CLEARANCE + swing;
+    const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE - swing;
     const xDrift = random(plan.profile.minX, plan.profile.maxX);
-    const yLift = random(plan.profile.minY, plan.profile.maxY);
+    // Hoops with a feature keep the shorter challenged gap (isFairSpawn rejects anything taller).
+    const challenged = getFeatureList(plan.features).length > 0;
+    const yLift = random(plan.profile.minY, challenged ? Math.min(plan.profile.maxY, CHALLENGED_MAX_VERTICAL_GAP) : plan.profile.maxY);
     const x = clamp(source.x + plan.direction * xDrift, minX, maxX);
     return makeHoop(x, source.y - yLift, targetId, source, plan);
   }
 
-  function isReachableTransition(source, target) {
-    const targetPositions = [{ x: target.baseX, y: target.baseY }];
+  // Poses the target must be reachable in. Moving hoops: centre and both ends (orbit: four points),
+  // so the player never has to wait for a lucky moment. Swinging hoops: their centre angle;
+  // spinning hoops: mouth up and one of ±20°, so the scoring window is not a single instant.
+  function getReachabilityPoses(target) {
+    const x = target.baseX;
+    const y = target.baseY;
+    const amplitude = target.moveAmplitude;
+    let positions = [{ x, y }];
     if (target.moving && target.movementType === "horizontal") {
-      targetPositions.push(
-        { x: target.baseX - target.moveAmplitude, y: target.baseY },
-        { x: target.baseX + target.moveAmplitude, y: target.baseY }
-      );
+      positions.push({ x: x - amplitude, y }, { x: x + amplitude, y });
     } else if (target.moving && target.movementType === "vertical") {
-      targetPositions.push(
-        { x: target.baseX, y: target.baseY - target.moveAmplitude },
-        { x: target.baseX, y: target.baseY + target.moveAmplitude }
-      );
+      positions.push({ x, y: y - amplitude }, { x, y: y + amplitude });
+    } else if (target.moving && target.movementType === "orbit") {
+      positions = [{ x: x + amplitude, y }, { x, y: y + amplitude }, { x: x - amplitude, y }, { x, y: y - amplitude }];
     }
-    return targetPositions.every((position) => isReachableTargetPosition(source, target, position));
+    if (target.turnType === "spin") return { all: positions.map((p) => ({ ...p, rotation: 0 })), any: [20, -20].map((d) => ({ x, y, rotation: d * Math.PI / 180 })) };
+    // A swing must also score half-way out on one side, so its window is wider than an instant.
+    if (target.turnType === "swing") {
+      const half = target.turnAmplitude * 0.5;
+      return {
+        all: positions.map((p) => ({ ...p, rotation: target.baseRotation })),
+        any: [half, -half].map((offset) => ({ x, y, rotation: target.baseRotation + offset }))
+      };
+    }
+    return { all: positions.map((p) => ({ ...p, rotation: target.baseRotation })), any: null };
+  }
+
+  function isReachableTransition(source, target) {
+    const poses = getReachabilityPoses(target);
+    if (!poses.all.every((pose) => isReachableTargetPosition(source, target, pose))) return false;
+    return !poses.any || poses.any.some((pose) => isReachableTargetPosition(source, target, pose));
   }
 
   // Wall-free flights do not depend on the start point, so each test shot is simulated once
   // (rightward) and reused as offsets; leftward shots mirror x. Saves a re-simulation per spawn candidate.
   let reachabilityPaths = null;
+  let flightBasis = null;
 
   function getReachabilityPaths() {
-    if (reachabilityPaths) return reachabilityPaths;
+    if (!reachabilityPaths) reachabilityPaths = buildShotPaths(REACHABILITY_PULL_RATIOS, REACHABILITY_ELEVATION_DEGREES);
+    return reachabilityPaths;
+  }
+
+  // stepBallFlight without walls is linear in the launch velocity: after k fixed steps
+  // x = x0 + vx·A[k] and y = y0 + vy·A[k] + G[k]. The basis lets the game solve shots in closed form.
+  function getFlightBasis() {
+    if (flightBasis) return flightBasis;
+    const steps = Math.ceil(REACHABILITY_MAX_TIME / Physics.FIXED_DT);
+    const dt = Physics.FIXED_DT;
+    const drag = Math.pow(AIR_DRAG, dt * 60);
+    const A = new Float64Array(steps + 1);
+    const G = new Float64Array(steps + 1);
+    const D = new Float64Array(steps + 1);
+    let power = 1;
+    let dragSum = 0;
+    for (let k = 1; k <= steps; k += 1) {
+      power *= drag;
+      dragSum += power;
+      D[k] = power;
+      A[k] = A[k - 1] + dt * power;
+      G[k] = G[k - 1] + GRAVITY * dt * dt * dragSum;
+    }
+    flightBasis = { A, G, D, steps };
+    return flightBasis;
+  }
+
+  function buildShotPaths(pullRatios, elevations) {
     const stepCount = Math.ceil(REACHABILITY_MAX_TIME / Physics.FIXED_DT);
-    reachabilityPaths = [];
-    for (const pullRatio of REACHABILITY_PULL_RATIOS) {
+    const paths = [];
+    for (const pullRatio of pullRatios) {
       const pullLength = MAX_PULL * pullRatio;
-      for (const elevationDegrees of REACHABILITY_ELEVATION_DEGREES) {
+      for (const elevationDegrees of elevations) {
         const elevation = elevationDegrees * (Math.PI / 180);
         const velocity = Physics.getLaunchVelocity({
           x: Math.cos(elevation) * pullLength,
@@ -2537,10 +2806,10 @@
           offsets[step * 2] = body.x;
           offsets[step * 2 + 1] = body.y;
         }
-        reachabilityPaths.push(offsets);
+        paths.push(offsets);
       }
     }
-    return reachabilityPaths;
+    return paths;
   }
 
   function isReachableTargetPosition(source, target, position) {
@@ -2548,9 +2817,10 @@
     const direction = position.x >= start.x ? 1 : -1;
     const mouthY = 4;
     const insideLimit = target.w * 0.35;
-    // Same transform as worldToHoop() for the target at the candidate position.
-    const cos = Math.cos(target.rotation);
-    const sin = Math.sin(target.rotation);
+    // Same transform as worldToHoop() for the target at the candidate pose.
+    const rotation = position.rotation ?? target.rotation;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
     const startDx = start.x - position.x;
     const startDy = start.y - position.y;
 
@@ -2575,19 +2845,256 @@
     return false;
   }
 
+  // One exact scoring shot per fan elevation: the launch speed that drops the ball through the
+  // centre of `target` at `pose` while falling into its mouth. Shots outside the launch power
+  // range, or that would enter a tilted mouth from behind, are left out.
+  function getReachingShots(source, target, pose) {
+    const { A, G, D, steps } = getFlightBasis();
+    const start = hoopToWorld(source, 0, NET_REST_Y);
+    const dx = pose.x - start.x;
+    const dy = pose.y - start.y;
+    const direction = dx >= 0 ? 1 : -1;
+    const distance = Math.abs(dx);
+    const rotation = pose.rotation ?? target.rotation;
+    const maxSpeed = MAX_PULL * LAUNCH_POWER_SCALE * MAX_POWER_BOOST;
+    const shots = [];
+    for (const degrees of OBSTACLE_FAN_ELEVATIONS) {
+      const elevation = degrees * (Math.PI / 180);
+      const needed = dy + distance * Math.tan(elevation);
+      if (!(needed > 0)) continue;
+      let k = 1;
+      while (k < steps && G[k] < needed) k += 1;
+      if (G[k] < needed) continue;
+      const f = (needed - G[k - 1]) / (G[k] - G[k - 1]);
+      const reach = A[k - 1] + (A[k] - A[k - 1]) * f;
+      const speed = distance / (Math.cos(elevation) * reach);
+      if (speed < OBSTACLE_FAN_MIN_SPEED || speed > maxSpeed) continue;
+      const vx = direction * speed * Math.cos(elevation);
+      const vy = -speed * Math.sin(elevation);
+      // Falling at the crossing, and into the mouth side of a tilted hoop.
+      const fallVy = vy * D[k] + (G[k] - G[k - 1]) / Physics.FIXED_DT;
+      const fallVx = vx * D[k];
+      if (fallVy <= 0) continue;
+      if (-fallVx * Math.sin(rotation) + fallVy * Math.cos(rotation) <= 0) continue;
+      shots.push({ vx, vy, startX: start.x, startY: start.y, steps: k, degrees });
+    }
+    return shots;
+  }
+
+  function getShotPoint(shot, k) {
+    const { A, G } = getFlightBasis();
+    return { x: shot.startX + shot.vx * A[k + 1], y: shot.startY + shot.vy * A[k + 1] + G[k + 1] };
+  }
+
+  function getObstacleDistanceAt(obstacle, time, x, y) {
+    const pose = Obstacles.getPose(obstacle, time);
+    const dx = pose.bx - pose.ax;
+    const dy = pose.by - pose.ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared > 0 ? clamp(((x - pose.ax) * dx + (y - pose.ay) * dy) / lengthSquared, 0, 1) : 0;
+    return Math.hypot(x - (pose.ax + dx * t), y - (pose.ay + dy * t)) - obstacle.radius;
+  }
+
+  // Smallest gap between a test shot and the obstacle: against everywhere it can ever be
+  // (launchTime null) or against its real motion for a release at launchTime. Stops early
+  // once the shot is known to be blocked.
+  function getShotClearance(shot, obstacle, launchTime, stopBelow) {
+    let minimum = Infinity;
+    // Only samples near the obstacle's swept box can come close; the rest are skipped.
+    const bounds = Obstacles.getBounds(obstacle);
+    const reach = OBSTACLE_CLEAN_MARGIN + 2;
+    // A static obstacle is one segment: resolve it once instead of per sample.
+    const pose = launchTime === null ? Obstacles.getPose(obstacle, 0) : null;
+    const sx = pose ? pose.bx - pose.ax : 0;
+    const sy = pose ? pose.by - pose.ay : 0;
+    const lengthSquared = sx * sx + sy * sy;
+    for (let k = 0; k < shot.steps; k += 1) {
+      const { x, y } = getShotPoint(shot, k);
+      if (x < bounds.minX - reach || x > bounds.maxX + reach || y < bounds.minY - reach || y > bounds.maxY + reach) {
+        // Outside the box the gap is at least the box distance; it only matters if nothing is closer.
+        const boxGap = Math.max(bounds.minX - x, x - bounds.maxX, bounds.minY - y, y - bounds.maxY, 0);
+        if (boxGap < minimum) minimum = boxGap;
+        continue;
+      }
+      let distance;
+      if (pose) {
+        const t = lengthSquared > 0 ? clamp(((x - pose.ax) * sx + (y - pose.ay) * sy) / lengthSquared, 0, 1) : 0;
+        distance = Math.hypot(x - (pose.ax + sx * t), y - (pose.ay + sy * t)) - obstacle.radius;
+      } else {
+        distance = getObstacleDistanceAt(obstacle, launchTime + (k + 1) * Physics.FIXED_DT, x, y);
+      }
+      if (distance < minimum) {
+        minimum = distance;
+        if (minimum < stopBelow) return minimum;
+      }
+    }
+    return minimum;
+  }
+
+  function getObstaclePeriod(obstacle) {
+    if (obstacle.kind === "slider" && obstacle.speed > 0) return (Math.PI * 2) / obstacle.speed;
+    if (obstacle.kind === "spinner" && obstacle.speed !== 0) return Math.PI / Math.abs(obstacle.speed);
+    return 0;
+  }
+
+  function buildObstacleSpec(kind, x, y, params) {
+    if (kind === "bar") return { kind, x, y, length: params.length, angle: random(-0.6, 0.6) };
+    if (kind === "peg") return { kind, x, y, radius: params.radius };
+    if (kind === "slider") {
+      return { kind, x, y, length: params.length, angle: 0, axisAngle: random(-0.18, 0.18), amplitude: params.amplitude, speed: params.speed, phase: random(0, Math.PI * 2) };
+    }
+    return { kind: "spinner", x, y, length: params.length, angle: random(0, Math.PI), speed: params.speed * (Math.random() < 0.5 ? -1 : 1) };
+  }
+
+  function poseToWorld(pose, localX, localY) {
+    const cos = Math.cos(pose.rotation);
+    const sin = Math.sin(pose.rotation);
+    return { x: pose.x + localX * cos - localY * sin, y: pose.y + localX * sin + localY * cos };
+  }
+
+  // Fair = inside the walls with room to pass, never close enough to a hoop to wedge the ball,
+  // and for every pose of the target: a static obstacle blocks at least one scoring shot but
+  // leaves two clean; a moving one leaves a clean shot for at least half of its cycle, and is in
+  // the way of some shot at some moment (otherwise it would be decoration).
+  function isObstaclePlacementFair(obstacle, source, target, poses, shotsByPose) {
+    const bounds = Obstacles.getBounds(obstacle);
+    if (bounds.minX < WALL_INSET + OBSTACLE_WALL_GAP || bounds.maxX > WORLD_W - WALL_INSET - OBSTACLE_WALL_GAP) return false;
+    const half = target.w * 0.5;
+    const hoopPoints = [[-half, 0], [half, 0], [0, NET_REST_Y], [0, 52], [0, -COIN_RADIUS * 2]];
+    const sourcePose = { x: source.x, y: source.y, rotation: source.rotation };
+    for (const pose of [sourcePose, ...poses]) {
+      for (const [localX, localY] of hoopPoints) {
+        const point = poseToWorld(pose, localX, localY);
+        if (Obstacles.sweptClearance(point.x, point.y, obstacle) < OBSTACLE_HOOP_CLEARANCE) return false;
+      }
+    }
+    const period = getObstaclePeriod(obstacle);
+    for (let p = 0; p < poses.length; p += 1) {
+      const shots = shotsByPose[p];
+      if (shots.length < 2) return false;
+      if (!period) {
+        let clean = 0;
+        let blocked = 0;
+        for (const shot of shots) {
+          // Once the shot is closer than the clean margin it cannot count as clean any more.
+          const clearance = getShotClearance(shot, obstacle, null, blocked ? OBSTACLE_CLEAN_MARGIN : -Infinity);
+          if (clearance >= OBSTACLE_CLEAN_MARGIN) clean += 1;
+          else if (clearance < BALL_RADIUS) blocked += 1;
+          if (clean >= 2 && blocked >= 1) break;
+        }
+        if (clean < 2 || blocked < 1) return false;
+        continue;
+      }
+      let everBlocked = false;
+      let openPhases = 0;
+      for (let i = 0; i < OBSTACLE_PHASE_SAMPLES; i += 1) {
+        const launchTime = simulationTime + (period * i) / OBSTACLE_PHASE_SAMPLES;
+        let clean = false;
+        for (const shot of shots) {
+          const clearance = getShotClearance(shot, obstacle, launchTime, everBlocked ? OBSTACLE_TIMED_CLEAN_MARGIN : -Infinity);
+          if (clearance >= OBSTACLE_TIMED_CLEAN_MARGIN) clean = true;
+          else if (clearance < BALL_RADIUS) everBlocked = true;
+          if (clean && everBlocked) break;
+        }
+        if (clean) openPhases += 1;
+      }
+      if (!everBlocked || openPhases < OBSTACLE_PHASE_SAMPLES * OBSTACLE_OPEN_SHARE) return false;
+    }
+    return true;
+  }
+
+  function placeObstacle(source, target, plan) {
+    if (!Obstacles) return null;
+    const kind = plan.features.obstacle;
+    const params = plan.params[kind] || {};
+    const poses = getReachabilityPoses(target).all;
+    const shotsByPose = poses.map((pose) => getReachingShots(source, target, pose));
+    const shots = shotsByPose[0];
+    if (shotsByPose.some((list) => list.length < 2)) return null;
+    // Scoring shots from one hoop to the next travel as a tight bundle until near their apex, and
+    // the lowest ones peak right above the target. A static obstacle therefore hangs at the apex
+    // of a middle lob: a flatter shot passes under it, a higher lob (often a +1 high drop) over
+    // it. A moving one crosses the bundle between the hoops and is beaten by timing.
+    const moving = kind === "slider" || kind === "spinner";
+    const gapTop = poses[0].y;
+    const gapBottom = shots[0].startY;
+    const apexes = shots.map((shot) => {
+      let apex = 0;
+      for (let step = 1; step < shot.steps; step += 1) if (getShotPoint(shot, step).y < getShotPoint(shot, apex).y) apex = step;
+      return apex;
+    });
+    const middle = shots.map((_, index) => index).filter((index) => {
+      const above = gapTop - getShotPoint(shots[index], apexes[index]).y;
+      return above >= OBSTACLE_LOB_APEX[0] && above <= OBSTACLE_LOB_APEX[1];
+    });
+    for (let attempt = 0; attempt < OBSTACLE_ATTEMPTS && obstacleChecksLeft > 0; attempt += 1) {
+      obstacleChecksLeft -= 1;
+      let shot;
+      let k = 0;
+      let x;
+      let y;
+      if (moving) {
+        shot = shots[Math.floor(Math.random() * Math.max(1, Math.ceil(shots.length * 0.6)))];
+        const height = gapBottom + (gapTop - gapBottom) * random(0.35, 0.75);
+        while (k < shot.steps - 1 && getShotPoint(shot, k).y > height) k += 1;
+        const point = getShotPoint(shot, k);
+        const next = getShotPoint(shot, Math.min(shot.steps - 1, k + 1));
+        const heading = Math.atan2(next.y - point.y, next.x - point.x);
+        const side = Math.random() < 0.5 ? -1 : 1;
+        // A slider's travel covers the shots off its centre, so a gap opens each pass; a spinner's
+        // hub sits beside the shots and only its blade sweeps across them.
+        const offset = kind === "slider"
+          ? (params.amplitude || 40) * random(0.45, 0.8)
+          : (params.length || 60) * 0.5 * random(0.5, 0.75);
+        const offsetAngle = kind === "slider" ? 0 : heading + Math.PI * 0.5;
+        x = point.x + Math.cos(offsetAngle) * offset * side;
+        y = point.y + Math.sin(offsetAngle) * offset * side;
+      } else {
+        if (!middle.length) return null;
+        const index = middle[Math.floor(Math.random() * middle.length)];
+        shot = shots[index];
+        k = clamp(Math.round(apexes[index] * random(0.88, 1.1)), 1, shot.steps - 1);
+        ({ x, y } = getShotPoint(shot, k));
+      }
+      const obstacle = Obstacles.create(buildObstacleSpec(kind, x, y, params));
+      if (obstacle && isObstaclePlacementFair(obstacle, source, target, poses, shotsByPose)) return obstacle;
+    }
+    return null;
+  }
+
+  let obstacleChecksLeft = OBSTACLE_CHECKS_PER_SPAWN;
+
+  function trySpawn(last, targetId, plan) {
+    for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt += 1) {
+      const candidate = sampleHoopCandidate(last, targetId, plan);
+      if (!isFairSpawn(last, candidate, plan)) continue;
+      // An obstacle is placed last, off the verified shots; no clean spot means another candidate.
+      if (plan.features.obstacle) {
+        candidate.obstacle = placeObstacle(last, candidate, plan);
+        if (!candidate.obstacle) continue;
+      }
+      return candidate;
+    }
+    return null;
+  }
+
   function nextHoop() {
     const last = hoops[hoops.length - 1];
     const targetId = last.id + 1;
+    obstacleChecksLeft = OBSTACLE_CHECKS_PER_SPAWN;
     let transitionPlan = createTransitionPlan(last, targetId);
     lastHoopSide = transitionPlan.direction;
-    let hoop = null;
-
-    for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt += 1) {
-      const candidate = sampleHoopCandidate(last, targetId, transitionPlan);
-      if (isFairSpawn(last, candidate, transitionPlan)) {
-        hoop = candidate;
-        break;
+    let hoop = trySpawn(last, targetId, transitionPlan);
+    // A plan that finds no fair spot gets one fresh plan before the plain fallback. An intro that
+    // fails waits for the next hoop, so a stubborn intro can never starve the rest of the ladder.
+    if (!hoop && (transitionPlan.intro || getFeatureList(transitionPlan.features).length)) {
+      if (transitionPlan.intro) {
+        transitionHistory.introFailures.set(transitionPlan.intro, (transitionHistory.introFailures.get(transitionPlan.intro) || 0) + 1);
       }
+      obstacleChecksLeft = OBSTACLE_CHECKS_RETRY;
+      transitionPlan = createTransitionPlan(last, targetId, { skipIntro: true });
+      lastHoopSide = transitionPlan.direction;
+      hoop = trySpawn(last, targetId, transitionPlan);
     }
 
     if (!hoop) {
@@ -2623,11 +3130,20 @@
   function isCoinEligibleTarget(hoop) {
     return Boolean(
       hoop
+      && !lesson.active
       && hoop.id > TUTORIAL_LAST_TARGET_ID
-      && !hoop.moving
       && !hoop.board
-      && Math.abs(hoop.rotation) < 0.001
+      && !hoop.turnType
+      && !(hoop.moving && hoop.movementType === "orbit")
+      && !isCoinBlockedByObstacle(hoop)
     );
+  }
+
+  // A coin is never parked where the ball would have to touch the obstacle to get it.
+  function isCoinBlockedByObstacle(hoop) {
+    if (!hoop.obstacle || !Obstacles) return false;
+    const coin = hoopToWorld(hoop, 0, COIN_LOCAL_Y);
+    return Obstacles.sweptClearance(coin.x, coin.y, hoop.obstacle) < COIN_RADIUS + BALL_RADIUS * 2;
   }
 
   function spawnCoinForTarget(hoop) {
@@ -2760,41 +3276,39 @@
     transitionHistory.lastWasLongShot = LONG_SHOT_COOLDOWN_TRANSITIONS > 0 && plan.longShot;
     transitionHistory.lastWasNear = plan.geometryName === "normalNear";
     transitionHistory.lastWasEdge = EDGE_TRANSITION_COOLDOWN > 0 && plan.edge;
+    if (plan.intro) {
+      transitionHistory.introduced.add(plan.intro);
+      transitionHistory.breather = INTRO_BREATHER_TRANSITIONS;
+    } else {
+      transitionHistory.breather = Math.max(0, transitionHistory.breather - 1);
+    }
   }
 
   function isFairSpawn(source, target, plan) {
-    const horizontalGap = Math.abs(target.x - source.x);
-    const verticalGap = source.y - target.y;
-    if (horizontalGap < plan.profile.minX || horizontalGap > plan.profile.maxX) return false;
+    // Gaps are measured to the centre of the target's motion. A sideways mover sweeps its own
+    // distance, so its centre may sit closer by its amplitude; reachability at both ends decides.
+    const horizontalGap = Math.abs(target.baseX - source.x);
+    const verticalGap = source.y - target.baseY;
+    const sweep = target.moving && target.movementType !== "vertical" ? target.moveAmplitude : 0;
+    if (horizontalGap < plan.profile.minX - sweep || horizontalGap > plan.profile.maxX) return false;
     if (verticalGap < plan.profile.minY || verticalGap > plan.profile.maxY) return false;
 
-    const targetChallengeCost = Number(target.moving) * CHALLENGE_COSTS.moving
-      + Number(target.board) * CHALLENGE_COSTS.board
-      + Number(Math.abs(target.rotation) > 0.001) * CHALLENGE_COSTS.tilt;
-    const totalBudget = Number(plan.wide) * CHALLENGE_COSTS.wide
-      + Number(plan.edge) * CHALLENGE_COSTS.edge
-      + Number(plan.longShot) * CHALLENGE_COSTS.longShot
-      + targetChallengeCost;
-    if (totalBudget > plan.budgetLimit || totalBudget !== plan.budget) return false;
-    if (plan.longShot && targetChallengeCost > 0) return false;
+    const featureCount = getFeatureList(plan.features).length;
+    if (plan.budget > Math.max(plan.budgetLimit, CHALLENGE_COST)) return false;
+    if (plan.longShot && featureCount > 0) return false;
     if (plan.longShot && Math.hypot(horizontalGap, verticalGap) < LONG_SHOT_MIN_CENTER_DISTANCE) return false;
-    if (plan.wide && targetChallengeCost > 1) return false;
+    if (plan.wide && featureCount > 1) return false;
     if (plan.edge && (hasBoard(source) || hasBoard(target))) return false;
-    if (plan.edge && (plan.wide || plan.longShot || targetChallengeCost > 0)) return false;
+    if (plan.edge && (plan.wide || plan.longShot || featureCount > 0)) return false;
     if (plan.geometryName === "normalNear" && Math.hypot(horizontalGap, verticalGap) < NORMAL_NEAR_MIN_CENTER_DISTANCE) return false;
-    if (targetChallengeCost && verticalGap > CHALLENGED_MAX_VERTICAL_GAP) return false;
+    if (featureCount && verticalGap > CHALLENGED_MAX_VERTICAL_GAP) return false;
+    if (target.board && (target.moving || target.turnType || Math.abs(target.baseRotation) > 0.001)) return false;
 
-    if (target.moving && (target.board || Math.abs(target.rotation) > 0.001)) return false;
-    if (target.board && Math.abs(target.rotation) > 0.001) return false;
-
-    if (target.moving && target.movementType === "horizontal") {
-      if (target.baseX - target.moveAmplitude < WALL_INSET + HOOP_WALL_CLEARANCE) return false;
-      if (target.baseX + target.moveAmplitude > WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE) return false;
+    if (target.moving && target.moveAmplitude < (MIN_MOVE_AMPLITUDE[target.movementType] ?? 0)) return false;
+    if (target.moving && target.movementType !== "horizontal") {
+      if (verticalGap - target.moveAmplitude < CHALLENGED_MIN_VERTICAL_GAP || verticalGap + target.moveAmplitude > CHALLENGED_LIFT_MAX_GAP) return false;
     }
-    if (target.moving && target.movementType === "vertical") {
-      if (verticalGap - target.moveAmplitude < 142 || verticalGap + target.moveAmplitude > 210) return false;
-    }
-    if (!plan.wide && !plan.edge && !plan.longShot && !target.moving) return true;
+    if (!plan.wide && !plan.edge && !plan.longShot && !featureCount) return true;
     return isReachableTransition(source, target);
   }
 
@@ -2815,7 +3329,8 @@
   }
 
   function onPointerDown(event) {
-    if (!gameBooted || userPaused || state !== "playing" || activePointer !== null) return;
+    if (!gameBooted || userPaused || state !== "playing" || activePointer !== null || lesson.finishTimer > 0) return;
+    ensureAudio();
     const settleCanBeSkipped = ball.settle && ball.settle.elapsed >= BALL_SETTLE_INPUT_DELAY;
     if (!ball.held && !settleCanBeSkipped) return;
     const p = screenToWorld(event.clientX, event.clientY);
@@ -2866,12 +3381,16 @@
       ball.wallBounceCount = 0;
       ball.lastSecondTimedShot = isLastSecondTimedShotRelease();
       runShotCount = addSafeStat(runShotCount, 1);
-      ball.launchHoopId = currentHoopId;
-      ball.launchInsideNet = true;
+      const currentHoop = getHoopById(currentHoopId);
+      ball.launchHoopId = currentHoop ? currentHoopId : -1;
+      ball.launchInsideNet = Boolean(currentHoop);
+      ball.launchFrame = currentHoop ? getLaunchFrame(currentHoop, pull) : null;
+      // The launcher really turns to the shot: its rims/net catch or deflect a ball that comes back.
+      if (currentHoop) turnHoopAboutRest(currentHoop, ball.launchFrame.rotation);
+      ball.apexY = ball.y;
       const spinDirection = Math.sign(ball.vx) || 1;
       ball.angularVelocity = spinDirection * clamp(Math.abs(ball.vx) * 0.012, 5, 12);
       airborneTime = 0;
-      const currentHoop = getHoopById(currentHoopId);
       if (currentHoop) playHoopReleaseAnimation(currentHoop, pull);
       emitShotRings(pull);
       playGameSound("shot", { power: pull.ratio });
@@ -3046,24 +3565,20 @@
   }
 
   function updateSimulation(dt) {
+    if (state === "playing" && lesson.finishTimer > 0) {
+      lesson.finishTimer -= dt;
+      if (lesson.finishTimer <= 0) {
+        finishLesson();
+        return;
+      }
+    }
     if (state === "playing") {
       if (updateTimedShotCountdown(dt)) return;
       simulationTime += dt;
       for (const hoop of hoops) {
-        if (hoop.role !== HOOP_ROLE.INACTIVE && hoop.moving) {
-          const wave = Math.sin(simulationTime * 1.8 + hoop.movePhase) * hoop.moveAmplitude;
-          if (hoop.movementType === "vertical") {
-            hoop.x = hoop.baseX;
-            hoop.y = hoop.baseY + wave;
-          } else {
-            hoop.x = clamp(
-              hoop.baseX + wave,
-              WALL_INSET + HOOP_WALL_CLEARANCE,
-              WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE
-            );
-            hoop.y = hoop.baseY;
-          }
-        }
+        if (hoop.role === HOOP_ROLE.INACTIVE) continue;
+        if (hoop.moving) applyHoopMotion(hoop, simulationTime);
+        if (hoop.turnType) hoop.rotation = getHoopTurnAt(hoop, simulationTime);
       }
 
       if (ball.settle) {
@@ -3099,6 +3614,13 @@
       hoop.netAnimation = Math.max(0, hoop.netAnimation - dt);
       hoop.rimFlash = Math.max(0, (hoop.rimFlash || 0) - dt);
       hoop.releaseAnimation = Math.max(0, hoop.releaseAnimation - dt);
+      hoop.catchBob = Math.max(0, (hoop.catchBob || 0) - dt);
+      if (hoop.obstacle) {
+        hoop.obstacleFlash = Math.max(0, (hoop.obstacleFlash || 0) - dt);
+        hoop.obstacleSquash = Math.max(0, (hoop.obstacleSquash || 0) - dt);
+        hoop.obstacleFade = hoop.role === HOOP_ROLE.TARGET ? 1 : Math.max(0, (hoop.obstacleFade ?? 1) - dt * 2.5);
+      }
+      updateLauncherSpring(hoop, dt);
     }
 
     updateBallSquash(dt);
@@ -3179,12 +3701,14 @@
     ball.y = flight.y;
     ball.vx = flight.vx;
     ball.vy = flight.vy;
+    if (ball.y < ball.apexY) ball.apexY = ball.y;
 
     detectActiveCoinCollection(flight.preWallX);
     if (flight.wallHit) {
       registerWallTouch(true);
       onBallImpact(Math.sign(flight.vx), 0, Math.abs(flight.vx) / WALL_RESTITUTION, "wall");
     }
+    collideActiveObstacle(dt);
 
     updateLaunchHoopSafety();
     detectHoopState();
@@ -3198,20 +3722,43 @@
     }
 
     if (!ball.settle && ball.y - simulationCameraY > WORLD_H + 90) {
-      if (!hasReachedSecondHoop && currentHoopId === 0) recoverFirstTransition();
+      if (lesson.active) recoverLessonShot();
+      else if (!hasReachedSecondHoop && currentHoopId === 0) recoverFirstTransition();
       else beginGameOver();
     } else if (!ball.settle && !ball.held && airborneTime >= AIRBORNE_RETRY_DELAY) {
-      if (timedShotAwaitingShotResult) beginGameOver();
+      if (lesson.active) recoverLessonShot();
+      else if (timedShotAwaitingShotResult) beginGameOver();
       else showRetry();
     }
   }
 
+  // Only the obstacle in front of the target is solid; passed ones are scenery.
+  function getActiveObstacleHoop() {
+    const hoop = getHoopById(targetHoopId);
+    return hoop && hoop.role === HOOP_ROLE.TARGET && hoop.obstacle ? hoop : null;
+  }
+
+  function collideActiveObstacle(dt) {
+    const hoop = Obstacles ? getActiveObstacleHoop() : null;
+    if (!hoop) return;
+    const contact = Obstacles.collideBody(ball, ball.r, hoop.obstacle, simulationTime, dt);
+    if (!contact) return;
+    ball.x = contact.x;
+    ball.y = contact.y;
+    ball.vx = contact.vx;
+    ball.vy = contact.vy;
+    if (!contact.impact) return;
+    hoop.obstacleFlash = OBSTACLE_FLASH_DURATION;
+    if (contact.kick) hoop.obstacleSquash = OBSTACLE_SQUASH_DURATION;
+    onBallImpact(contact.nx, contact.ny, contact.approachSpeed, hoop.obstacle.kind === "peg" ? "bumper" : "board");
+  }
+
   function playHoopReleaseAnimation(hoop, pull) {
-    const directionLength = Math.hypot(pull.x, pull.y) || 1;
     hoop.netAnimation = 0;
     hoop.releaseAnimation = HOOP_RELEASE_DURATION;
-    hoop.releaseDirectionX = pull.x / directionLength;
-    hoop.releaseDirectionY = pull.y / directionLength;
+    // The launcher faces the shot, so in its own frame every release points straight out of the mouth.
+    hoop.releaseDirectionX = 0;
+    hoop.releaseDirectionY = -1;
     hoop.releaseStrength = clamp(pull.ratio, 0.35, 1);
   }
 
@@ -3235,24 +3782,41 @@
   }
 
   function beginBallSettle(hoop) {
-    const localBall = worldToHoop(hoop, ball.x, ball.y);
     emitLandingDust(hoop, Math.hypot(ball.vx, ball.vy));
     ball.vx = 0;
     ball.vy = 0;
     ball.angularVelocity = 0;
     ball.held = false;
     timedShotOpportunityProcessed = false;
-    ball.settle = {
-      hoopId: hoop.id,
-      elapsed: 0,
-      startX: localBall.x,
-      startY: clamp(localBall.y, 3, 40),
-      startRotation: ball.rotation
-    };
+    ball.settle = createSettle(hoop, false);
+    hoop.catchBob = HOOP_CATCH_BOB.duration;
     airborneTime = 0;
     snapBallRender();
     kickBallSquash(Math.PI * 0.5, -0.26);
     if (debugShots) debugShots.recording = false;
+  }
+
+  function normalizeAngle(angle) {
+    const wrapped = (angle + Math.PI) % (Math.PI * 2);
+    return (wrapped < 0 ? wrapped + Math.PI * 2 : wrapped) - Math.PI;
+  }
+
+  // Turn a hoop about its own resting point; the drawn launcher keeps its current angle and the
+  // spring carries it to the new one, so a physics turn never pops on screen.
+  function turnHoopAboutRest(hoop, rotation) {
+    const pivot = hoopToWorld(hoop, 0, NET_REST_Y);
+    const drawn = hoop.rotation + (hoop.aimAngle || 0);
+    setHoopRotationAboutRest(hoop, rotation, pivot.x, pivot.y);
+    hoop.aimAngle = normalizeAngle(drawn - rotation);
+  }
+
+  // Rotate a hoop to `rotation` about the world point (pivotX, pivotY) = its local (0, NET_REST_Y).
+  function setHoopRotationAboutRest(hoop, rotation, pivotX, pivotY) {
+    hoop.rotation = rotation;
+    hoop.x = pivotX + NET_REST_Y * Math.sin(rotation);
+    hoop.y = pivotY - NET_REST_Y * Math.cos(rotation);
+    hoop.baseX = hoop.x;
+    hoop.baseY = hoop.y;
   }
 
   function updateBallSettle(dt) {
@@ -3268,6 +3832,9 @@
     if (!wasAimReady && settle.elapsed >= BALL_SETTLE_INPUT_DELAY) processTimedShotOpportunity();
     const progress = clamp(settle.elapsed / BALL_SETTLE_DURATION, 0, 1);
     const eased = progress * progress * (3 - 2 * progress);
+    if (settle.hoopStartRotation) {
+      setHoopRotationAboutRest(hoop, settle.hoopStartRotation * (1 - eased), settle.pivotX, settle.pivotY);
+    }
     const localX = settle.startX * (1 - eased);
     const localY = settle.startY + (NET_REST_Y - settle.startY) * eased;
     const point = hoopToWorld(hoop, localX, localY);
@@ -3281,8 +3848,15 @@
   }
 
   function finishBallSettle() {
-    const hoop = ball.settle ? getHoopById(ball.settle.hoopId) : null;
-    if (hoop) placeBallInHoop(hoop);
+    const settle = ball.settle;
+    const hoop = settle ? getHoopById(settle.hoopId) : null;
+    if (!hoop) return;
+    if (settle.hoopStartRotation && hoop.rotation !== 0) {
+      // Skipping the settle (an early tap) hands the rest of the turn to the drawn launcher spring.
+      hoop.aimAngle = (hoop.aimAngle || 0) + hoop.rotation;
+      setHoopRotationAboutRest(hoop, 0, settle.pivotX, settle.pivotY);
+    }
+    placeBallInHoop(hoop);
   }
 
   function updateLaunchHoopSafety() {
@@ -3293,12 +3867,57 @@
       return;
     }
 
-    const localBall = worldToHoop(launchHoop, ball.x, ball.y);
-    const safeMargin = ball.r + RIM_RADIUS + 5;
+    if (hasClearedLaunchHoop(launchHoop, ball, ball.launchInsideNet)) ball.launchHoopId = -1;
+  }
+
+  // Pure: the launcher's rim and net may collide again. Either the ball is far away, or it has left
+  // the net and touches none of the launcher's colliders, so a weak shot that drops back beside the
+  // mouth hits the rim/net instead of falling through a ghost hoop.
+  function hasClearedLaunchHoop(launchHoop, body, insideNet) {
+    const localBall = worldToHoop(launchHoop, body.x, body.y);
+    const safeMargin = BALL_RADIUS + RIM_RADIUS + 5;
     const clearedAbove = localBall.y < -safeMargin;
     const clearedSide = Math.abs(localBall.x) > launchHoop.w * 0.5 + safeMargin;
     const clearedBelow = localBall.y > 62 + safeMargin;
-    if (clearedAbove || clearedSide || clearedBelow) ball.launchHoopId = -1;
+    if (clearedAbove || clearedSide || clearedBelow) return true;
+    if (insideNet) return false;
+    const half = launchHoop.w * 0.5;
+    const rimGap = BALL_RADIUS + RIM_RADIUS;
+    if (Math.hypot(localBall.x + half, localBall.y) < rimGap || Math.hypot(localBall.x - half, localBall.y) < rimGap) return false;
+    // Net sides and underside, the same geometry collideNet uses.
+    const side = Math.abs(localBall.x);
+    const ax = half - NET_SIDE_TOP_INSET;
+    const ay = LAUNCH_NET_TOP_Y;
+    const bx = NET_SIDE_BOTTOM_X;
+    const by = LAUNCH_NET_BOTTOM_Y;
+    const t = clamp(((side - ax) * (bx - ax) + (localBall.y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2), 0, 1);
+    if (Math.hypot(side - (ax + (bx - ax) * t), localBall.y - (ay + (by - ay) * t)) < BALL_RADIUS + NET_SEGMENT_GAP) return false;
+    if (localBall.y - BALL_RADIUS < LAUNCH_NET_BOTTOM_Y && localBall.y + BALL_RADIUS > NET_UNDERSIDE_TOP_Y && side < NET_UNDERSIDE_HALF_WIDTH) return false;
+    return true;
+  }
+
+  // Shot direction as a hoop rotation: 0 = mouth straight up, +π/2 = mouth to the right.
+  function getAimRotation(pull) {
+    return Math.atan2(pull.x, -pull.y);
+  }
+
+  // The launcher turned to face the shot, pivoting around the ball's resting point. Returned as a
+  // hoop-like frame so the hoop-local helpers (worldToHoop, didEnterHoopFromAbove) work on it.
+  function getLaunchFrame(hoop, pull) {
+    const pivot = hoopToWorld(hoop, 0, NET_REST_Y);
+    const rotation = getAimRotation(pull);
+    const sin = Math.sin(rotation);
+    const cos = Math.cos(rotation);
+    return {
+      x: pivot.x + NET_REST_Y * sin,
+      y: pivot.y - NET_REST_Y * cos,
+      rotation,
+      cos,
+      sin,
+      w: hoop.w,
+      pivotX: pivot.x,
+      pivotY: pivot.y
+    };
   }
 
   function showRetry() {
@@ -3335,7 +3954,7 @@
     for (const hoop of hoops) {
       if (!canHoopAffectBall(hoop)) continue;
       if (hoop.id === ball.launchHoopId) {
-        if (ball.launchInsideNet) containBallInLaunchNet(hoop, dt);
+        if (ball.launchInsideNet) containBallInLaunchNet(dt);
         continue;
       }
       const leftRim = hoopToWorld(hoop, -hoop.w * 0.5, 0);
@@ -3352,53 +3971,69 @@
     }
   }
 
-  // The launch hoop has no rim collision so diagonal shots leave freely, but a ball
-  // still under the rim line must not leave through the side of the net. Position
-  // based (not swept), so a fast sideways shot cannot tunnel through. The walls stay
-  // upright even on a tilted hoop, so the same shot angles leave every hoop alike.
-  // Pure, so the aim preview can apply exactly the same rule.
-  function getLaunchNetWallStep(hoop, body, dt) {
-    const localX = body.x - hoop.x;
-    const localY = body.y - hoop.y;
+  // The launch hoop has no rim collision so shots leave freely, but a ball still inside the
+  // net must not leave through its side. The walls live in the aim frame (the launcher turned
+  // to face the shot), so a shot in any direction leaves through the mouth and only a ball that
+  // gravity bends sideways meets a wall. Position based (not swept), so nothing tunnels.
+  // Pure, so the aim preview applies exactly the same rule.
+  function getLaunchNetWallStep(frame, body, dt) {
+    const dx = body.x - frame.x;
+    const dy = body.y - frame.y;
+    const localX = dx * frame.cos + dy * frame.sin;
+    const localY = -dx * frame.sin + dy * frame.cos;
     if (localY < LAUNCH_NET_TOP_Y || localY > LAUNCH_NET_BOTTOM_Y) return { left: true };
     const depth = (localY - LAUNCH_NET_TOP_Y) / (LAUNCH_NET_BOTTOM_Y - LAUNCH_NET_TOP_Y);
-    const wallX = hoop.w * 0.5 - 8 + (14 - (hoop.w * 0.5 - 8)) * depth;
+    const wallX = frame.w * 0.5 - NET_SIDE_TOP_INSET + (NET_SIDE_BOTTOM_X - (frame.w * 0.5 - NET_SIDE_TOP_INSET)) * depth;
     const limit = wallX - LAUNCH_NET_MARGIN;
-    if (Math.abs(localX) <= limit) return { left: false, x: body.x, vx: body.vx, vy: body.vy, side: 0, outwardSpeed: 0 };
+    if (Math.abs(localX) <= limit) return { left: false, x: body.x, y: body.y, vx: body.vx, vy: body.vy, side: 0, outwardSpeed: 0 };
 
     const side = Math.sign(localX);
-    const outwardSpeed = body.vx * side;
-    if (outwardSpeed <= 0) return { left: false, x: hoop.x + side * limit, vx: body.vx, vy: body.vy, side, outwardSpeed: 0 };
+    const shift = side * limit - localX;
+    const x = body.x + shift * frame.cos;
+    const y = body.y + shift * frame.sin;
+    const localVx = body.vx * frame.cos + body.vy * frame.sin;
+    const localVy = -body.vx * frame.sin + body.vy * frame.cos;
+    const outwardSpeed = localVx * side;
+    if (outwardSpeed <= 0) return { left: false, x, y, vx: body.vx, vy: body.vy, side, outwardSpeed: 0 };
+    const nextLocalVx = -side * outwardSpeed * LAUNCH_NET_BOUNCE;
+    const nextLocalVy = localVy * Math.pow(0.96, dt * 60);
     return {
       left: false,
-      x: hoop.x + side * limit,
-      vx: -side * outwardSpeed * LAUNCH_NET_BOUNCE,
-      vy: body.vy * Math.pow(0.96, dt * 60),
+      x,
+      y,
+      vx: nextLocalVx * frame.cos - nextLocalVy * frame.sin,
+      vy: nextLocalVx * frame.sin + nextLocalVy * frame.cos,
       side,
       outwardSpeed
     };
   }
 
-  function containBallInLaunchNet(hoop, dt) {
-    const wall = getLaunchNetWallStep(hoop, ball, dt);
+  function containBallInLaunchNet(dt) {
+    const frame = ball.launchFrame;
+    if (!frame) {
+      ball.launchInsideNet = false;
+      return;
+    }
+    const wall = getLaunchNetWallStep(frame, ball, dt);
     if (wall.left) {
       ball.launchInsideNet = false;
       return;
     }
     ball.x = wall.x;
+    ball.y = wall.y;
     ball.vx = wall.vx;
     ball.vy = wall.vy;
     if (wall.outwardSpeed <= 0) return;
     ball.touchedHoop = true;
-    onBallImpact(-wall.side, 0, wall.outwardSpeed, "net");
+    onBallImpact(-wall.side * frame.cos, -wall.side * frame.sin, wall.outwardSpeed, "net");
   }
 
   function collideNet(hoop, dt) {
     if (ball.scoredHoopId === hoop.id) return;
-    const leftTop = hoopToWorld(hoop, -hoop.w * 0.5 + 8, 7);
-    const rightTop = hoopToWorld(hoop, hoop.w * 0.5 - 8, 7);
-    const leftBottom = hoopToWorld(hoop, -14, 52);
-    const rightBottom = hoopToWorld(hoop, 14, 52);
+    const leftTop = hoopToWorld(hoop, -hoop.w * 0.5 + NET_SIDE_TOP_INSET, LAUNCH_NET_TOP_Y);
+    const rightTop = hoopToWorld(hoop, hoop.w * 0.5 - NET_SIDE_TOP_INSET, LAUNCH_NET_TOP_Y);
+    const leftBottom = hoopToWorld(hoop, -NET_SIDE_BOTTOM_X, LAUNCH_NET_BOTTOM_Y);
+    const rightBottom = hoopToWorld(hoop, NET_SIDE_BOTTOM_X, LAUNCH_NET_BOTTOM_Y);
     const localBall = worldToHoop(hoop, ball.x, ball.y);
     const localPrevious = worldToHoop(hoop, ball.prevX, ball.prevY);
     const localVelocity = worldVectorToHoop(hoop, ball.vx, ball.vy);
@@ -3409,10 +4044,9 @@
     collideSegment(leftTop.x, leftTop.y, leftBottom.x, leftBottom.y, 0.54, dt);
     collideSegment(rightTop.x, rightTop.y, rightBottom.x, rightBottom.y, 0.54, dt);
 
-    if (localVelocity.y < 0 && localBall.y - ball.r < 52 && localBall.y + ball.r > 36) {
-      const lowerWidth = 34;
-      if (Math.abs(localBall.x) < lowerWidth) {
-        const correctedPosition = hoopToWorld(hoop, localBall.x, 52 + ball.r);
+    if (localVelocity.y < 0 && localBall.y - ball.r < LAUNCH_NET_BOTTOM_Y && localBall.y + ball.r > NET_UNDERSIDE_TOP_Y) {
+      if (Math.abs(localBall.x) < NET_UNDERSIDE_HALF_WIDTH) {
+        const correctedPosition = hoopToWorld(hoop, localBall.x, LAUNCH_NET_BOTTOM_Y + ball.r);
         const correctedVelocity = hoopVectorToWorld(
           hoop,
           localVelocity.x + (localBall.x < 0 ? -70 : 70),
@@ -3437,7 +4071,7 @@
     const py = y1 + vy * t;
     const dx = ball.x - px;
     const dy = ball.y - py;
-    const minDist = ball.r + 2.5;
+    const minDist = ball.r + NET_SEGMENT_GAP;
     const dist = Math.hypot(dx, dy) || 0.001;
     if (dist >= minDist) return;
 
@@ -3555,8 +4189,8 @@
   }
 
   function emitImpactBurst(x, y, nx, ny, strength, kind) {
-    if (kind === "rim") {
-      const colors = ["#fff4d6", "#ffc46b", "#ff8a2e"];
+    if (kind === "rim" || kind === "bumper") {
+      const colors = kind === "bumper" ? ["#ffffff", "#ffe08a", "#f2a93b"] : ["#fff4d6", "#ffc46b", "#ff8a2e"];
       const count = 3 + Math.round(strength * 5);
       for (let i = 0; i < count; i += 1) {
         const angle = Math.atan2(ny, nx) + random(-1.1, 1.1);
@@ -4020,22 +4654,57 @@
       return;
     }
 
-    if (currentHoop && currentHoop.role === HOOP_ROLE.CURRENT && didEnterHoopFromAbove(currentHoop)) {
-      if (timedShotAwaitingShotResult) {
-        beginGameOver();
-        return;
-      }
-      swishStreak = 0;
-      perfectChain = 0;
-      ballFlameWasActive = false;
-      placeBallInHoop(currentHoop);
+    // The launcher faces the last shot, so a ball leaving it moves out of the mouth and only a
+    // ball falling back into the mouth is caught.
+    if (!currentHoop || currentHoop.role !== HOOP_ROLE.CURRENT || !didEnterHoopFromAbove(currentHoop)) return;
+    if (timedShotAwaitingShotResult) {
+      beginGameOver();
+      return;
     }
+    swishStreak = 0;
+    perfectChain = 0;
+    ballFlameWasActive = false;
+    catchBallInCurrentHoop(currentHoop);
   }
 
-  function didEnterHoopFromAbove(hoop) {
+  // A missed shot that drops back into its own hoop slides into the net instead of snapping.
+  function catchBallInCurrentHoop(hoop) {
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.angularVelocity = 0;
+    ball.held = false;
+    ball.launchHoopId = -1;
+    ball.launchInsideNet = false;
+    ball.settle = createSettle(hoop, true);
+    airborneTime = 0;
+    hoop.catchBob = HOOP_CATCH_BOB.duration * 0.6;
+    kickBallSquash(Math.PI * 0.5, -0.18);
+    if (debugShots) debugShots.recording = false;
+  }
+
+  // A tilted, swinging, spinning or turned hoop rights itself while the ball settles, pivoting
+  // around the resting point so the launch point (and the next hoop's reachability check) stays put.
+  function createSettle(hoop, recatch) {
     const localBall = worldToHoop(hoop, ball.x, ball.y);
-    const localPrevious = worldToHoop(hoop, ball.prevX, ball.prevY);
-    const localVelocity = worldVectorToHoop(hoop, ball.vx, ball.vy);
+    const pivot = hoopToWorld(hoop, 0, NET_REST_Y);
+    return {
+      hoopId: hoop.id,
+      elapsed: 0,
+      startX: recatch ? clamp(localBall.x, -hoop.w * 0.4, hoop.w * 0.4) : localBall.x,
+      startY: clamp(localBall.y, 3, 40),
+      startRotation: ball.rotation,
+      hoopStartRotation: normalizeAngle(hoop.rotation),
+      pivotX: pivot.x,
+      pivotY: pivot.y,
+      recatch
+    };
+  }
+
+  // prev/body default to the live ball; the aim preview passes its own samples.
+  function didEnterHoopFromAbove(hoop, prev = { x: ball.prevX, y: ball.prevY }, body = ball) {
+    const localBall = worldToHoop(hoop, body.x, body.y);
+    const localPrevious = worldToHoop(hoop, prev.x, prev.y);
+    const localVelocity = worldVectorToHoop(hoop, body.vx, body.vy);
     const mouth = 4;
     const catchDepth = 58;
     const insideLimit = hoop.w * 0.35;
@@ -4063,34 +4732,41 @@
     perfectChain = swishStreak;
     const perfectGain = wasPerfect ? Math.min(swishStreak + 1, 10) : 1;
     const wallMultiplier = usedWall ? 2 : 1;
-    lastScoreGain = perfectGain * wallMultiplier;
+    // Added after the multipliers: a high drop is worth one extra point, never doubled.
+    const highArc = isHighArcBasket(hoop);
+    lastScoreGain = perfectGain * wallMultiplier + (highArc ? HIGH_ARC_BONUS : 0);
     lastWasPerfect = wasPerfect;
     lastWasBounce = usedWall;
+    lastWasHighArc = highArc;
     score += lastScoreGain;
     const ignited = wasPerfect && swishStreak === getFlameThreshold();
-    recordBasketStats(wasPerfect, usedWall, lastScoreGain);
-    const achievementUnlocked = recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot, ignited);
+    // The lesson run is practice: no stats, missions, achievements or best score.
+    const practice = lesson.active;
     onTutorialBasket(wasPerfect, usedWall, ignited);
-    recordMissionProgress({
-      baskets: 1,
-      perfects: wasPerfect ? 1 : 0,
-      bankBaskets: usedWall ? 1 : 0,
-      ignitions: ignited ? 1 : 0,
-      runScore: score,
-      perfectChain: swishStreak
-    });
-    if (achievementUnlocked) requestSave(true);
-    else requestSave(false);
-    if (
-      highScoreCelebration.eligibleThisRun
-      && !highScoreCelebration.hasCelebratedThisRun
-      && score > runStartBestScore
-    ) {
-      triggerHighScoreCelebration();
-    }
-    if (score > best) {
-      best = score;
-      writeBestScore(best);
+    if (!practice) {
+      recordBasketStats(wasPerfect, usedWall, lastScoreGain);
+      const achievementUnlocked = recordAchievementBasket(wasPerfect, usedWall, wasLastSecondTimedShot, ignited);
+      recordMissionProgress({
+        baskets: 1,
+        perfects: wasPerfect ? 1 : 0,
+        bankBaskets: usedWall ? 1 : 0,
+        ignitions: ignited ? 1 : 0,
+        runScore: score,
+        perfectChain: swishStreak,
+        highArcs: highArc ? 1 : 0
+      });
+      requestSave(achievementUnlocked);
+      if (
+        highScoreCelebration.eligibleThisRun
+        && !highScoreCelebration.hasCelebratedThisRun
+        && score > runStartBestScore
+      ) {
+        triggerHighScoreCelebration();
+      }
+      if (score > best) {
+        best = score;
+        writeBestScore(best);
+      }
     }
     updateScore();
     bumpScoreHud(wasPerfect);
@@ -4099,17 +4775,22 @@
       : SCORE_SHAKE.basket;
     shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
     if (wasPerfect) hitStopTimer = ignited ? HIT_STOP.ignite : HIT_STOP.perfect;
-    comboText = usedWall || wasPerfect ? 1.1 : 0.85;
+    comboText = usedWall || wasPerfect || highArc ? 1.1 : 0.85;
     comboAnchor.x = hoop.x;
     comboAnchor.y = hoop.y;
-    scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain);
-    playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak });
+    scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain, highArc);
+    playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak, highArc });
     triggerHaptic(!wasPerfect ? 16 : swishStreak >= 3 ? [12, 30, 12, 30, 24] : [12, 40, 18], true);
     burst(hoop.x, hoop.y);
     triggerHoopScoreEffect(hoop, { swish: wasPerfect, wall: usedWall });
     hoop.moving = false;
+    hoop.turnType = null;
+    hoop.baseRotation = 0;
     hoop.baseX = hoop.x;
     hoop.baseY = hoop.y;
+    // The old launcher is done; it swings back upright (drawn by the launcher spring).
+    const previousLauncher = getHoopById(currentHoopId);
+    if (previousLauncher && previousLauncher !== hoop && previousLauncher.rotation !== 0) turnHoopAboutRest(previousLauncher, 0);
     currentHoopId = hoop.id;
     if (hoop.id === 1) hasReachedSecondHoop = true;
     const coinIntervalReset = expireCoinForCompletedTarget(hoop.id);
@@ -4120,13 +4801,19 @@
     beginBallSettle(hoop);
   }
 
-  function buildScoreFeedback(wasPerfect, usedWall, gained) {
+  function buildScoreFeedback(wasPerfect, usedWall, gained, highArc) {
     const parts = [];
     if (wasPerfect) parts.push(t("perfect"));
     if (usedWall) parts.push(t("bounce"));
-    if (!wasPerfect && !usedWall) parts.push(t("nice"));
+    if (highArc) parts.push(t("highArc"));
+    if (!wasPerfect && !usedWall && !highArc) parts.push(t("nice"));
     parts.push("+" + gained);
     return parts.join(" · ");
+  }
+
+  // Measured from the flight's highest point to the target's rim at the moment it scores.
+  function isHighArcBasket(hoop) {
+    return hoop.y - ball.apexY >= HIGH_ARC_HEIGHT;
   }
 
   function hoopToWorld(hoop, localX, localY) {
@@ -4394,10 +5081,12 @@
     }
     for (const hoop of hoops) drawHoopMotionPath(hoop);
     for (const hoop of hoops) drawHoop(hoop);
+    for (const hoop of hoops) drawHoopObstacle(hoop);
     drawActiveCoin();
     drawShotRings();
     drawParticles();
     if (debugShots) drawDebugShots();
+    if (drag && ball.held) drawHighArcGuide();
     if (drag && ball.held) drawTrajectory();
     drawBall();
     if (HoopArt) {
@@ -4829,29 +5518,138 @@
     ctx.restore();
   }
 
-  function drawHoopMotionPath(hoop) {
-    if (!hoop.moving || hoop.role === HOOP_ROLE.INACTIVE) return;
+  // While aiming, a short dashed mark above the target shows the height a high drop must reach.
+  function drawHighArcGuide() {
+    if (score < Progression.MECHANICS.tilt.unlock) return;
+    const target = getHoopById(targetHoopId);
+    if (!target) return;
     const colors = getCanvasTheme();
-    const horizontal = hoop.movementType === "horizontal";
-    const minX = WALL_INSET + HOOP_WALL_CLEARANCE;
-    const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE;
-    const startX = horizontal ? clamp(hoop.baseX - hoop.moveAmplitude, minX, maxX) : hoop.baseX;
-    const endX = horizontal ? clamp(hoop.baseX + hoop.moveAmplitude, minX, maxX) : hoop.baseX;
-    const startY = horizontal ? hoop.baseY : hoop.baseY - hoop.moveAmplitude;
-    const endY = horizontal ? hoop.baseY : hoop.baseY + hoop.moveAmplitude;
+    const y = target.y - HIGH_ARC_HEIGHT;
+    const half = 46;
+    const x = clamp(target.x, WALL_INSET + half + 18, WORLD_W - WALL_INSET - half - 18);
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    ctx.strokeStyle = colors.motionPath;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(x - half, y);
+    ctx.lineTo(x + half, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.6;
+    ctx.font = "900 11px " + CANVAS_UI_FONT;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = colors.motionPath;
+    ctx.fillText("+1", x + half + 5, y);
+    ctx.restore();
+  }
 
+  // Telegraphs: every moving or turning target shows its full range before you shoot.
+  function drawHoopMotionPath(hoop) {
+    if (hoop.role === HOOP_ROLE.INACTIVE || (!hoop.moving && !hoop.turnType)) return;
+    const colors = getCanvasTheme();
     ctx.save();
     ctx.fillStyle = colors.motionPath;
-    for (let i = 0; i <= 6; i += 1) {
-      const ratio = i / 6;
-      const x = startX + (endX - startX) * ratio;
-      const y = startY + (endY - startY) * ratio;
-      ctx.globalAlpha = i === 0 || i === 6 ? 0.72 : 0.38;
+    ctx.globalAlpha *= clamp(hoop.entranceTimer ?? 1, 0, 1);
+    const baseAlpha = ctx.globalAlpha;
+    const dot = (x, y, end) => {
+      ctx.globalAlpha = baseAlpha * (end ? 0.85 : 0.55);
       ctx.beginPath();
-      ctx.arc(x, y, i === 0 || i === 6 ? 2.8 : 1.7, 0, Math.PI * 2);
+      ctx.arc(x, y, end ? 3.1 : 2.1, 0, Math.PI * 2);
       ctx.fill();
+    };
+    if (hoop.moving && hoop.movementType === "orbit") {
+      for (let i = 0; i < 16; i += 1) {
+        const angle = (Math.PI * 2 * i) / 16;
+        dot(hoop.baseX + Math.cos(angle) * hoop.moveAmplitude, hoop.baseY + Math.sin(angle) * hoop.moveAmplitude, false);
+      }
+    } else if (hoop.moving) {
+      const horizontal = hoop.movementType === "horizontal";
+      const minX = WALL_INSET + HOOP_WALL_CLEARANCE;
+      const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE;
+      const startX = horizontal ? clamp(hoop.baseX - hoop.moveAmplitude, minX, maxX) : hoop.baseX;
+      const endX = horizontal ? clamp(hoop.baseX + hoop.moveAmplitude, minX, maxX) : hoop.baseX;
+      const startY = horizontal ? hoop.baseY : hoop.baseY - hoop.moveAmplitude;
+      const endY = horizontal ? hoop.baseY : hoop.baseY + hoop.moveAmplitude;
+      for (let i = 0; i <= 6; i += 1) {
+        const ratio = i / 6;
+        dot(startX + (endX - startX) * ratio, startY + (endY - startY) * ratio, i === 0 || i === 6);
+      }
     }
+    if (hoop.turnType) drawHoopTurnGuide(hoop, dot);
     ctx.restore();
+  }
+
+  // Swing: an arc of dots where the mouth will point, end dots at the extremes. Spin: a ring of
+  // dots with a chevron showing the direction. Drawn around the rim centre, outside the net.
+  function drawHoopTurnGuide(hoop, dot) {
+    const radius = hoop.w * 0.5 + 16;
+    const mouthAngle = (rotation) => rotation - Math.PI * 0.5;
+    if (hoop.turnType === "swing") {
+      const from = mouthAngle(hoop.baseRotation - hoop.turnAmplitude);
+      const to = mouthAngle(hoop.baseRotation + hoop.turnAmplitude);
+      const count = Math.max(4, Math.round((to - from) / 0.14));
+      for (let i = 0; i <= count; i += 1) {
+        const angle = from + ((to - from) * i) / count;
+        dot(hoop.x + Math.cos(angle) * radius, hoop.y + Math.sin(angle) * radius, i === 0 || i === count);
+      }
+      return;
+    }
+    for (let i = 0; i < 20; i += 1) {
+      const angle = (Math.PI * 2 * i) / 20;
+      dot(hoop.x + Math.cos(angle) * radius, hoop.y + Math.sin(angle) * radius, false);
+    }
+    // Chevron just ahead of the mouth, pointing the way it turns.
+    const ahead = mouthAngle(hoop.rotation) + hoop.turnDirection * 0.5;
+    const tipX = hoop.x + Math.cos(ahead) * radius;
+    const tipY = hoop.y + Math.sin(ahead) * radius;
+    const tangent = ahead + hoop.turnDirection * Math.PI * 0.5;
+    ctx.globalAlpha = 0.8 * clamp(hoop.entranceTimer ?? 1, 0, 1);
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(tipX - Math.cos(tangent - 0.6) * 7, tipY - Math.sin(tangent - 0.6) * 7);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(tipX - Math.cos(tangent + 0.6) * 7, tipY - Math.sin(tangent + 0.6) * 7);
+    ctx.stroke();
+  }
+
+  // Obstacle colours: hazards stay a neutral slate so they never read as hoops; bumpers are warm;
+  // the motion rail uses the same colour as the moving-hoop dots.
+  const obstaclePaletteCache = new Map();
+
+  function getObstaclePalette() {
+    const key = selectedThemeId + (darkMode ? "|dark" : "|light");
+    let palette = obstaclePaletteCache.get(key);
+    if (!palette) {
+      const art = getHoopArtPalette();
+      const colors = getCanvasTheme();
+      // Bumpers are pink-red with a white ring: never mistaken for a gold coin.
+      palette = darkMode
+        ? { ink: art.ink, body: "#7d8fb0", shade: "#4c5a75", light: "#c3d0e6", accent: "#ff5f8f", rail: colors.motionPath }
+        : { ink: art.ink, body: "#5b6b86", shade: "#3d4a60", light: "#9fb0c9", accent: "#f04b78", rail: colors.motionPath };
+      obstaclePaletteCache.set(key, palette);
+    }
+    return palette;
+  }
+
+  function drawHoopObstacle(hoop) {
+    if (!hoop.obstacle || !Obstacles) return;
+    const active = hoop.role === HOOP_ROLE.TARGET;
+    // A passed obstacle fades out under the hoop it guarded.
+    const alpha = active ? clamp(hoop.entranceTimer ?? 1, 0, 1) : clamp(hoop.obstacleFade ?? 0, 0, 1) * 0.5;
+    if (alpha <= 0.01) return;
+    Obstacles.draw(ctx, hoop.obstacle, simulationTime, getObstaclePalette(), {
+      alpha,
+      flash: clamp((hoop.obstacleFlash || 0) / OBSTACLE_FLASH_DURATION, 0, 1),
+      squash: reduceMotion ? 0 : Math.sin(clamp((hoop.obstacleSquash || 0) / OBSTACLE_SQUASH_DURATION, 0, 1) * Math.PI),
+      darkBackground: isCanvasDarkBackground()
+    });
   }
 
   function getHoopDeformation(hoop) {
@@ -4881,17 +5679,90 @@
     };
   }
 
+  // The launcher already faces the shot, so the pull only deepens the net like a slingshot pouch.
   function getHoopAimDeformation(hoop) {
     const visual = getHoopPullVisualState(hoop);
     if (!visual.active) return visual;
+    return { ...visual, netLift: LAUNCHER_POUCH_STRETCH * visual.ratio };
+  }
+
+  // The pull that the launcher shows: the player's drag, or the tutorial ghost hand's demo pull.
+  function getLauncherPull() {
+    if (!ball.held) return null;
+    if (drag) return getPullVector();
+    return getGhostPartialPull();
+  }
+
+  function getLauncherAimTarget(hoop) {
+    if (hoop.id !== currentHoopId || state !== "playing") return 0;
+    const pull = getLauncherPull();
+    if (!pull || pull.len < LAUNCHER_MIN_AIM_PULL) return 0;
+    return normalizeAngle(getAimRotation(pull) - hoop.rotation);
+  }
+
+  // Drawn-only spring: the launcher swings toward the aim, and after a release it snaps back
+  // upright with a small overshoot. Substepped so a long frame cannot blow it up.
+  function updateLauncherSpring(hoop, dt) {
+    const target = getLauncherAimTarget(hoop);
+    let angle = hoop.aimAngle || 0;
+    let velocity = hoop.aimVelocity || 0;
+    if (!angle && !velocity && !target) return;
+    const steps = Math.max(1, Math.ceil(dt / LAUNCHER_SPRING.maxStep));
+    const h = dt / steps;
+    for (let i = 0; i < steps; i += 1) {
+      const error = normalizeAngle(target - angle);
+      velocity += (error * LAUNCHER_SPRING.stiffness - velocity * LAUNCHER_SPRING.damping) * h;
+      angle += velocity * h;
+    }
+    angle = normalizeAngle(angle);
+    if (target === 0 && Math.abs(angle) < 1e-4 && Math.abs(velocity) < 1e-3) {
+      angle = 0;
+      velocity = 0;
+    }
+    hoop.aimAngle = angle;
+    hoop.aimVelocity = velocity;
+  }
+
+  function getHoopCatchBob(hoop) {
+    const timer = hoop.catchBob || 0;
+    if (timer <= 0 || reduceMotion) return 0;
+    const progress = 1 - timer / HOOP_CATCH_BOB.duration;
+    return HOOP_CATCH_BOB.depth * Math.sin(progress * Math.PI * 2.2) * Math.pow(1 - progress, 1.6);
+  }
+
+  // Where the hoop is drawn: the launcher turns around the ball's resting point, then bobs.
+  function getHoopDrawTransform(hoop, deformation) {
+    const aim = hoop.aimAngle || 0;
+    const bob = getHoopCatchBob(hoop);
+    if (!aim) {
+      return {
+        x: hoop.x + deformation.offsetX,
+        y: hoop.y + deformation.offsetY + bob,
+        rotation: hoop.rotation + deformation.visualTilt
+      };
+    }
+    const pivot = hoopToWorld(hoop, 0, NET_REST_Y);
+    const rotation = hoop.rotation + aim;
     return {
-      ...visual,
-      offsetX: visual.directionX * HOOP_AIM_MAX_OFFSET * 0.22 * visual.ratio,
-      offsetY: visual.directionY * HOOP_AIM_MAX_OFFSET * 0.16 * visual.ratio,
-      netSwing: visual.directionX * 5.2 * visual.ratio,
-      netLift: visual.directionY * 3.2 * visual.ratio,
-      visualTilt: clamp(visual.directionX * 0.032 + Math.sin(visual.launcherAngle) * 0.018, -0.055, 0.055) * visual.ratio
+      x: pivot.x + NET_REST_Y * Math.sin(rotation) + deformation.offsetX,
+      y: pivot.y - NET_REST_Y * Math.cos(rotation) + deformation.offsetY + bob,
+      rotation: rotation + deformation.visualTilt
     };
+  }
+
+  // The held ball sinks back into the pouch while aiming and rides the hoop's catch bob.
+  function getBallDrawOffset() {
+    const offset = { x: 0, y: 0 };
+    if (!ball.held && !ball.settle) return offset;
+    const hoop = getHoopById(ball.settle ? ball.settle.hoopId : currentHoopId);
+    if (hoop) offset.y += getHoopCatchBob(hoop);
+    const pull = ball.held ? getLauncherPull() : null;
+    if (pull && pull.len >= LAUNCHER_MIN_AIM_PULL) {
+      const length = Math.hypot(pull.x, pull.y) || 1;
+      offset.x -= (pull.x / length) * LAUNCHER_POUCH_PULLBACK * pull.ratio;
+      offset.y -= (pull.y / length) * LAUNCHER_POUCH_PULLBACK * pull.ratio;
+    }
+    return offset;
   }
 
   function getHoopPullVisualState(hoop) {
@@ -4908,9 +5779,9 @@
       directionY: 0,
       ratio: 0
     };
-    if (!drag || !ball.held || hoop.id !== currentHoopId) return empty;
-    const pull = getPullVector();
-    if (pull.len < 0.01) return empty;
+    if (!ball.held || hoop.id !== currentHoopId) return empty;
+    const pull = getLauncherPull();
+    if (!pull || pull.len < 0.01) return empty;
     const length = Math.hypot(pull.x, pull.y) || 1;
     const directionX = pull.x / length;
     const directionY = pull.y / length;
@@ -4955,11 +5826,12 @@
     const netSwing = deformation.netSwing;
     const netStretch = deformation.netStretch;
 
+    const transform = getHoopDrawTransform(hoop, deformation);
     ctx.save();
     if (hoop.role === HOOP_ROLE.INACTIVE) ctx.globalAlpha = 0.42;
-    ctx.translate(hoop.x + deformation.offsetX, hoop.y + deformation.offsetY);
+    ctx.translate(transform.x, transform.y);
     applyHoopSpawnTransform(hoop);
-    ctx.rotate(hoop.rotation + deformation.visualTilt);
+    ctx.rotate(transform.rotation);
 
     if (HoopArt) {
       HoopArt.drawHoopBack(ctx, getHoopArtPalette(), getHoopArtOptions(hoop, deformation, boardGeometry));
@@ -5073,11 +5945,12 @@
     const deformation = getHoopDeformation(hoop);
 
     if (HoopArt) {
+      const transform = getHoopDrawTransform(hoop, deformation);
       ctx.save();
       if (hoop.role === HOOP_ROLE.INACTIVE) ctx.globalAlpha = 0.42;
-      ctx.translate(hoop.x + deformation.offsetX, hoop.y + deformation.offsetY);
+      ctx.translate(transform.x, transform.y);
       applyHoopSpawnTransform(hoop);
-      ctx.rotate(hoop.rotation + deformation.visualTilt);
+      ctx.rotate(transform.rotation);
       HoopArt.drawHoopFront(ctx, getHoopArtPalette(), getHoopArtOptions(hoop, deformation, null));
       ctx.restore();
       return;
@@ -5087,10 +5960,11 @@
     const netSwing = deformation.netSwing;
     const netStretch = deformation.netStretch;
 
+    const transform = getHoopDrawTransform(hoop, deformation);
     ctx.save();
-    ctx.translate(hoop.x + deformation.offsetX, hoop.y + deformation.offsetY);
+    ctx.translate(transform.x, transform.y);
     applyHoopSpawnTransform(hoop);
-    ctx.rotate(hoop.rotation + deformation.visualTilt);
+    ctx.rotate(transform.rotation);
     ctx.beginPath();
     drawNetCrossCurve(21, 31, 3, netSwing * 0.7, netStretch * 0.55);
     drawNetCrossCurve(14, 44, 2.2, netSwing, netStretch);
@@ -5107,6 +5981,9 @@
     const skin = getSelectedBallSkin();
     const skinImage = getBallSkinImage(skin);
     const renderPosition = getBallRenderPosition();
+    const drawOffset = getBallDrawOffset();
+    renderPosition.x += drawOffset.x;
+    renderPosition.y += drawOffset.y;
     const rotation = previousBallRender.rotation + (currentBallRender.rotation - previousBallRender.rotation) * renderAlpha;
     drawFlameAura(renderPosition.x, renderPosition.y);
     ctx.save();
@@ -5148,19 +6025,42 @@
     return ballSkinImages[skin.id];
   }
 
-  // Mirror the launch-net walls so a sideways shot's dots bounce back like the ball will.
-  function makeLaunchNetAfterStep() {
+  // Mirror what the real flight does around its launcher, in the same order as updateAirborneBall:
+  // clear the launch hoop, catch a ball falling back into the turned mouth (the dots then stop in
+  // the pouch), then the launch-net walls.
+  function makeLaunchNetAfterStep(pull) {
     const launchHoop = getHoopById(currentHoopId);
-    let insideNet = Boolean(launchHoop);
-    return launchHoop ? (body, dt) => {
-      if (!insideNet) return body;
-      const wall = getLaunchNetWallStep(launchHoop, body, dt);
-      if (wall.left) {
-        insideNet = false;
-        return body;
+    if (!launchHoop || !pull) return null;
+    // The launcher as it will be after the release: turned to the shot about the ball.
+    const frame = getLaunchFrame(launchHoop, pull);
+    // The obstacle moves on simulation time; accumulate it exactly like the fixed steps do.
+    const obstacleHoop = Obstacles ? getActiveObstacleHoop() : null;
+    let obstacleTime = simulationTime;
+    let launchActive = true;
+    let insideNet = true;
+    let caughtBody = null;
+    let previous = { x: ball.x, y: ball.y };
+    return (body, dt) => {
+      if (caughtBody) return caughtBody;
+      let next = body;
+      if (obstacleHoop) {
+        obstacleTime += dt;
+        const contact = Obstacles.collideBody(next, BALL_RADIUS, obstacleHoop.obstacle, obstacleTime, dt);
+        if (contact) next = { ...next, x: contact.x, y: contact.y, vx: contact.vx, vy: contact.vy };
       }
-      return { ...body, x: wall.x, vx: wall.vx, vy: wall.vy };
-    } : null;
+      if (launchActive && hasClearedLaunchHoop(frame, next, insideNet)) launchActive = false;
+      if (launchActive && didEnterHoopFromAbove(frame, previous, next)) {
+        caughtBody = { ...next, x: frame.pivotX, y: frame.pivotY, vx: 0, vy: 0, caught: true };
+        return caughtBody;
+      }
+      if (launchActive && insideNet) {
+        const wall = getLaunchNetWallStep(frame, next, dt);
+        if (wall.left) insideNet = false;
+        else next = { ...next, x: wall.x, y: wall.y, vx: wall.vx, vy: wall.vy };
+      }
+      previous = next;
+      return next;
+    };
   }
 
   function predictShot(pull, velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS)) {
@@ -5168,7 +6068,7 @@
       dotSteps: TRAJECTORY_DOT_STEPS,
       pointCount: Math.round(7 + pull.ratio * 6),
       maxPoints: 15,
-      afterStep: makeLaunchNetAfterStep()
+      afterStep: makeLaunchNetAfterStep(pull)
     });
   }
 
@@ -5203,19 +6103,23 @@
     const pull = getPullVector();
     ctx.save();
     drawTrajectoryPoints(predictShot(pull), pull.ratio, colors);
+    // Pull band and power ring follow the ball where it is drawn (sunk into the pouch).
+    const offset = getBallDrawOffset();
+    const bx = ball.x + offset.x;
+    const by = ball.y + offset.y;
     ctx.globalAlpha = 1;
     ctx.strokeStyle = colors.trajectoryHot;
     ctx.lineWidth = 4 + pull.ratio * 2;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(ball.x, ball.y);
-    ctx.lineTo(ball.x - pull.x * 0.55, ball.y - pull.y * 0.55);
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx - pull.x * 0.55, by - pull.y * 0.55);
     ctx.stroke();
 
     ctx.strokeStyle = "rgba(38, 48, 68, 0.16)";
     ctx.lineWidth = 10;
     ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ball.r + 11, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * pull.ratio);
+    ctx.arc(bx, by, ball.r + 11, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * pull.ratio);
     ctx.stroke();
     ctx.restore();
   }
@@ -5250,7 +6154,7 @@
     }
     const normalized = normalizeStats(stats);
     const veteran = best > 0 || normalized.lifetimeScore > 0 || normalized.perfectBaskets > 0;
-    tutorial.seen = new Set(veteran ? TUTORIAL_TIP_IDS : []);
+    tutorial.seen = new Set(veteran ? BASIC_TIP_IDS : []);
     writeTutorialSeen();
   }
 
@@ -5284,7 +6188,8 @@
     if (!tipBanner || tutorial.tipId !== null || tutorial.tipQueue.length === 0) return;
     const entry = tutorial.tipQueue.shift();
     tutorial.tipId = entry.id;
-    if (!entry.sticky) markTipSeen(entry.id);
+    // Lesson lines are steps of the tutorial run, not one-time tips.
+    if (!entry.sticky && !entry.lesson) markTipSeen(entry.id);
     tipText.textContent = t("tip_" + entry.id);
     tipBanner.classList.remove("active");
     void tipBanner.offsetWidth;
@@ -5341,7 +6246,7 @@
         const pull = { x: Math.cos(angle) * len * towardX, y: -Math.sin(angle) * len, len, ratio, power: 1 };
         const velocity = Physics.getLaunchVelocity(pull, FLIGHT_PARAMS);
         const flight = Physics.predictTrajectory(ball, velocity, FLIGHT_PARAMS, {
-          dotSteps: 1, pointCount: 220, maxPoints: 220, afterStep: makeLaunchNetAfterStep()
+          dotSteps: 1, pointCount: 220, maxPoints: 220, afterStep: makeLaunchNetAfterStep(pull)
         });
         const points = flight.points;
         let entryIndex = -1;
@@ -5380,41 +6285,124 @@
     return bestPull;
   }
 
-  function beginAimGuide() {
-    tutorial.basketsThisRun = 0;
-    if (hasSeenTip("aim")) {
-      tutorial.guide = null;
-      return;
-    }
+  // ---------- Lesson: the first run teaches the pull and the swish, then returns to the menu ----------
+
+  // Players from the old tutorial ("aim" seen) count as taught.
+  function isLessonDone() {
+    return hasSeenTip("lesson") || hasSeenTip("aim");
+  }
+
+  function beginLesson() {
+    lesson.active = true;
+    lesson.step = "shoot";
+    lesson.pendingGuide = false;
+    lesson.finishTimer = 0;
     replayTutorialButton?.classList.remove("done");
+    // Nothing to collect or record while learning.
+    activeCoin = null;
+    coinSpawnDue = false;
+    coinTargetsRemaining = Number.MAX_SAFE_INTEGER;
+    showLessonGuide();
+    showLessonTip("aim");
+  }
+
+  // The ghost hand demonstrates a pull that really scores a swish into the current target.
+  function showLessonGuide() {
     const target = getHoopById(targetHoopId);
     const ghost = target ? findGhostPull(target) : null;
     tutorial.guide = ghost ? { clock: 0, pull: ghost.pull, flight: ghost.points } : { clock: 0, pull: null, flight: [] };
-    showTip("aim", true);
   }
 
-  function completeAimGuide() {
-    if (!tutorial.guide && hasSeenTip("aim")) return;
+  function showLessonTip(id) {
+    clearTips();
+    tutorial.tipQueue.push({ id, sticky: id !== "lessonDone", lesson: true });
+    showNextTip();
+  }
+
+  // Any basket teaches the pull; then only a swish (no rim) ends the lesson.
+  function onLessonBasket(wasPerfect) {
     tutorial.guide = null;
+    if (wasPerfect) {
+      lesson.step = "done";
+      lesson.finishTimer = LESSON_FINISH_DELAY;
+      showLessonTip("lessonDone");
+      return;
+    }
+    showLessonTip(lesson.step === "shoot" ? "lessonSwish" : "lessonRetry");
+    lesson.step = "swish";
+    lesson.pendingGuide = true;
+  }
+
+  // A miss never ends the lesson: the ball goes back to its hoop and the ghost shows the shot again.
+  function recoverLessonShot() {
+    if (currentHoopId === 0) {
+      recoverFirstTransition();
+    } else {
+      const hoop = getHoopById(currentHoopId);
+      if (!hoop) {
+        resetGame(false);
+        beginLesson();
+        return;
+      }
+      swishStreak = 0;
+      perfectChain = 0;
+      ballHeat = 0;
+      ballFlameWasActive = false;
+      clearPointerDrag(activePointer);
+      placeBallInHoop(hoop);
+      ball.scoredHoopId = hoop.id;
+      playGameSound("retry");
+    }
+    lesson.pendingGuide = true;
+  }
+
+  function finishLesson() {
+    lesson.active = false;
+    markTipSeen("lesson");
     markTipSeen("aim");
-    if (tutorial.tipId === "aim") hideTip();
+    markTipSeen("perfect");
+    if (stopActivePlayClock()) markSaveDirty();
+    resetGame(true);
+    syncMenuHome();
+    restartAnimationLoop();
   }
 
   function onTutorialBasket(wasPerfect, usedWall, ignitedNow) {
     tutorial.basketsThisRun += 1;
-    completeAimGuide();
-    showTip("perfect");
+    if (lesson.active) {
+      onLessonBasket(wasPerfect);
+      return;
+    }
     if (wasPerfect && (ignitedNow || tutorial.basketsThisRun >= 2)) showTip("flame");
     if (usedWall) markTipSeen("wall");
     else if (tutorial.basketsThisRun >= 4) showTip("wall");
   }
 
   function updateTutorial(dt) {
+    // The next demo waits until the ball rests in its new hoop.
+    if (lesson.active && lesson.pendingGuide && ball.held && state === "playing") {
+      lesson.pendingGuide = false;
+      showLessonGuide();
+    }
     if (tutorial.guide) tutorial.guide.clock = (tutorial.guide.clock + dt) % GHOST_CYCLE;
   }
 
   function easeInOut(t) {
     return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) * 0.5;
+  }
+
+  function getGhostDragK(time) {
+    return time < 0.35 ? 0 : time < 1.25 ? easeInOut((time - 0.35) / 0.9) : time < 1.75 ? 1 : 0;
+  }
+
+  // The ghost hand's pull at this moment of the demo, so the launcher turns with it too.
+  function getGhostPartialPull() {
+    const guide = tutorial.guide;
+    if (!guide || !guide.pull || drag || !ball.held || state !== "playing") return null;
+    const dragK = getGhostDragK(guide.clock);
+    if (dragK <= 0.05) return null;
+    const pull = guide.pull;
+    return { x: pull.x * dragK, y: pull.y * dragK, len: pull.len * dragK, ratio: pull.ratio * dragK, power: 1 };
   }
 
   function drawTutorialGuide() {
@@ -5423,11 +6411,11 @@
     const time = guide.clock;
     const colors = getCanvasTheme();
     const pull = guide.pull;
-    const dragK = time < 0.35 ? 0 : time < 1.25 ? easeInOut((time - 0.35) / 0.9) : time < 1.75 ? 1 : 0;
+    const dragK = getGhostDragK(time);
     const handAlpha = time < 0.3 ? time / 0.3 : time < 1.75 ? 1 : time < 2.05 ? 1 - (time - 1.75) / 0.3 : 0;
     ctx.save();
-    if (dragK > 0.05) {
-      const partial = { x: pull.x * dragK, y: pull.y * dragK, len: pull.len * dragK, ratio: pull.ratio * dragK, power: 1 };
+    const partial = getGhostPartialPull();
+    if (partial) {
       ctx.globalAlpha = 0.8;
       drawTrajectoryPoints(predictShot(partial), partial.ratio, colors);
     }
@@ -5644,7 +6632,7 @@
   // Small sticker text just above the hoop that was scored: the player's eye is already there,
   // and it stays well below the next target (at least ~150 units higher) so it never hides it.
   function drawCombo() {
-    const duration = lastWasPerfect || lastWasBounce ? 1.1 : 0.85;
+    const duration = lastWasPerfect || lastWasBounce || lastWasHighArc ? 1.1 : 0.85;
     const progress = 1 - clamp(comboText / duration, 0, 1);
     const pop = Math.sin(clamp(progress * 3, 0, 1) * Math.PI);
     const streakEmphasis = lastWasPerfect ? Math.min(swishStreak, 6) * 0.5 : 0;
@@ -5656,7 +6644,7 @@
     const maxX = WORLD_W - WALL_INSET - halfWidth;
     const x = minX < maxX ? clamp(comboAnchor.x, minX, maxX) : WORLD_W * 0.5;
     ctx.globalAlpha = Math.min(1, comboText * 3);
-    drawStickerText(scoreFeedbackText, x, comboAnchor.y - 24 - progress * 16, lastWasBounce ? "#ff8a1f" : lastWasPerfect ? "#ffc531" : "#ffffff", 5);
+    drawStickerText(scoreFeedbackText, x, comboAnchor.y - 24 - progress * 16, lastWasBounce ? "#ff8a1f" : lastWasPerfect ? "#ffc531" : lastWasHighArc ? "#7fd6ff" : "#ffffff", 5);
     ctx.restore();
   }
 
@@ -5768,6 +6756,11 @@
       playNoise(0.08, 0.012 + strength * 0.025, "lowpass", 700, 300, 0.6);
       playTone(260, 0.05, "triangle", 0.008 + strength * 0.012, 0, 200);
       if (voice.chainNet) playChainJingle(0.006 + strength * 0.012, 0);
+    } else if (name === "bumper") {
+      const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      playTone(240, 0.12, "triangle", 0.02 + strength * 0.03, 0, 420);
+      playTone(480, 0.06, "sine", 0.008 + strength * 0.01, 0.01, 620);
+      playNoise(0.03, 0.012 + strength * 0.02, "lowpass", 900, 300, 0.7);
     } else if (name === "board" || name === "wall") {
       const strength = clamp(Number(detail.strength) || 0, 0, 1);
       const pitch = (name === "board" ? 150 : 120) * voice.thump;
@@ -5790,6 +6783,8 @@
       if (voice.chainNet) playChainJingle(0.014, 0.01);
       const notes = detail.perfect ? [1, 1.26, 1.5] : [0.75, 1];
       if (detail.perfect && streak >= 3) notes.push(2);
+      // A high drop rings one octave-and-a-fifth note on top, still inside the same cue.
+      if (detail.highArc) notes.push(3);
       notes.forEach((ratio, i) => playMallet(root * ratio, start + 0.02 + i * 0.07, i === notes.length - 1 ? 0.034 : 0.026));
     } else if (name === "countdownTick") {
       const remainingSeconds = clamp(Math.floor(Number(detail.seconds) || 1), 1, 5);
@@ -6970,8 +7965,10 @@
       }
       achievementToastMedal.classList.toggle("missionMedal", entry.kind === "mission");
     }
-    // During play the toast sits under the HUD; over menus and dialogs it moves to the bottom.
-    achievementToast.classList.toggle("atBottom", state !== "playing");
+    // During play the toast is a small one-line pill under the HUD; over menus it is the full card at the bottom.
+    const inPlay = state === "playing";
+    achievementToast.classList.toggle("atBottom", !inPlay);
+    achievementToast.classList.toggle("compact", inPlay);
     achievementToast.classList.add("active");
     achievementToastTimer = window.setTimeout(() => {
       achievementToast.classList.remove("active");
@@ -6979,7 +7976,7 @@
         achievementToastTimer = null;
         showNextAchievementToast();
       }, 220);
-    }, 2400);
+    }, inPlay ? 1700 : 2400);
   }
 
   function renderProfile() {
@@ -7978,6 +8975,8 @@
     syncAchievementUi();
     if (shouldPersistMigratedSave || (bootstrapAchievementsChanged && !dailyLoginChanged)) requestSave(true);
     restartAnimationLoop();
+    // A first-time player starts in the lesson, not on the menu.
+    if (!isLessonDone()) startGame(true);
   }
 
   function clamp(value, min, max) {
