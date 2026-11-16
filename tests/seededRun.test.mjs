@@ -43,8 +43,9 @@ function planRun(g, { seed, count = 60, between = '' }) {
 }
 
 test('the same run seed plans the same hoops in two fresh games; another seed plans others', () => {
-  const a = planRun(loadGame(), { seed: 20261116 });
-  const b = planRun(loadGame(), { seed: 20261116 });
+  // Two fresh games whose cosmetic randomness differs.
+  const a = planRun(loadGame({ randomSeed: 1 }), { seed: 20261116 });
+  const b = planRun(loadGame({ randomSeed: 2 }), { seed: 20261116 });
   assert.equal(a.seed, 20261116);
   assert.equal(a.planned.length, 62);
   assert.deepEqual(b.planned, a.planned);
@@ -101,4 +102,30 @@ test('only cosmetic code and the run-seed pick use Math.random in game.js', asyn
   // createRunSeed: the single entry point that picks a normal run's seed.
   // The rest is presentation: flame embers, sound variation and noise, the cosmetic random().
   assert.deepEqual([...new Set(owners)].sort(), ['createRunSeed', 'playGameSound', 'playNoise', 'random', 'updateCelFlame']);
+});
+
+test('coin and shot-clock intervals come from the run seed, on a stream of their own', () => {
+  const rollIntervals = (randomSeed) => JSON.parse(loadGame({ randomSeed }).evaluate(`
+    resetGame(false, 99);
+    const coins = [coinTargetsRemaining];
+    const shots = [timedShotOpportunitiesRemaining];
+    for (let i = 0; i < 12; i++) {
+      scheduleNextCoin();
+      coins.push(coinTargetsRemaining);
+      timedShotActive = true;
+      consumeTimedShotChallenge();
+      shots.push(timedShotOpportunitiesRemaining);
+    }
+    JSON.stringify({ coins, shots, coinRange: [COIN_INTERVAL_MIN, COIN_INTERVAL_MAX], shotRange: [TIMED_SHOT_INTERVAL_MIN, TIMED_SHOT_INTERVAL_MAX] });
+  `));
+  // Different cosmetic randomness, same run seed: the same coins and shot clocks.
+  const a = rollIntervals(1);
+  assert.deepEqual(rollIntervals(2), a);
+  for (const value of a.coins) assert.ok(value >= a.coinRange[0] && value <= a.coinRange[1]);
+  for (const value of a.shots) assert.ok(value >= a.shotRange[0] && value <= a.shotRange[1]);
+  assert.ok(new Set(a.coins).size > 1 && new Set(a.shots).size > 1, 'intervals still vary');
+  // Collecting coins or meeting shot clocks never shifts the hoop sequence.
+  const plain = planRun(loadGame(), { seed: 99, count: 30 });
+  const busy = planRun(loadGame(), { seed: 99, count: 30, between: 'scheduleNextCoin(); timedShotActive = true; consumeTimedShotChallenge();' });
+  assert.deepEqual(busy.planned, plain.planned);
 });

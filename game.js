@@ -1921,9 +1921,10 @@
   };
   // Gameplay randomness of the current run. Everything that decides what the player faces (hoop
   // positions, movement, mechanics, obstacles) draws from `next`, which resetGame re-creates from
-  // the run's `seed`: the same seed plans the same hoops (daily challenge, tests). Cosmetics
-  // (sound, particles, shake) never draw from it, so they cannot change the hoop sequence.
-  const runRandom = { seed: 0, next: null };
+  // the run's `seed`: the same seed plans the same hoops (daily challenge, tests). Coin and
+  // shot-clock intervals use `schedule`, a second stream from the same seed, so collecting a coin
+  // never shifts the hoops. Cosmetics (sound, particles, shake) use neither.
+  const runRandom = { seed: 0, next: null, schedule: null };
   seedRunRandom(createRunSeed());
   const highScoreCelebration = {
     eligibleThisRun: best > 0,
@@ -2084,6 +2085,7 @@
   function seedRunRandom(seed) {
     runRandom.seed = seed >>> 0;
     runRandom.next = makeSeededRandom(runRandom.seed);
+    runRandom.schedule = makeSeededRandom(hashString("schedule|" + runRandom.seed));
   }
 
   // `seed` replays a known run; without it every run gets a fresh one.
@@ -3176,19 +3178,19 @@
     return hoop;
   }
 
-  function rollCoinInterval() {
-    return Math.floor(random(COIN_INTERVAL_MIN, COIN_INTERVAL_MAX + 1));
+  function rollCoinInterval(rng) {
+    return Math.floor(rngRange(rng, COIN_INTERVAL_MIN, COIN_INTERVAL_MAX + 1));
   }
 
   function resetCoinRun() {
     activeCoin = null;
-    coinTargetsRemaining = rollCoinInterval();
+    coinTargetsRemaining = rollCoinInterval(runRandom.schedule);
     coinSpawnDue = false;
     coinFeedback = null;
   }
 
   function scheduleNextCoin() {
-    coinTargetsRemaining = rollCoinInterval();
+    coinTargetsRemaining = rollCoinInterval(runRandom.schedule);
     coinSpawnDue = false;
   }
 
@@ -3490,8 +3492,8 @@
     };
   }
 
-  function rollTimedShotOpportunityInterval() {
-    return Math.floor(random(TIMED_SHOT_INTERVAL_MIN, TIMED_SHOT_INTERVAL_MAX + 1));
+  function rollTimedShotOpportunityInterval(rng) {
+    return Math.floor(rngRange(rng, TIMED_SHOT_INTERVAL_MIN, TIMED_SHOT_INTERVAL_MAX + 1));
   }
 
   function getTimedShotDuration(scoreValue) {
@@ -3529,7 +3531,7 @@
   }
 
   function resetTimedShotRun() {
-    timedShotOpportunitiesRemaining = rollTimedShotOpportunityInterval();
+    timedShotOpportunitiesRemaining = rollTimedShotOpportunityInterval(runRandom.schedule);
     timedShotOpportunityProcessed = true;
     timedShotFirstChallengeStarted = false;
     timedShotActive = false;
@@ -3576,7 +3578,7 @@
     timedShotRemainingSeconds = 0;
     timedShotInitialSeconds = 0;
     timedShotTickMask = 0;
-    timedShotOpportunitiesRemaining = rollTimedShotOpportunityInterval();
+    timedShotOpportunitiesRemaining = rollTimedShotOpportunityInterval(runRandom.schedule);
     hideTimedShotHud();
     return true;
   }
