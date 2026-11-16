@@ -17,31 +17,43 @@
 
   // intro: the mechanic's first appearance in a run is a gentle hoop on its own.
   // group: what a feature changes. Only one feature per group per hoop transition.
-  //   turn  = the target hoop's orientation, move = its position, block = an obstacle, board = backboard.
+  //   turn  = the target hoop's orientation, move = its position, block = an obstacle, board = backboard,
+  //   size  = the target's mouth width, aim = how much of the aim preview is shown.
   // params: [at unlock, at full strength]; angles in degrees, speeds in rad/s, lengths in world units.
   const MECHANICS = Object.freeze({
     board: Object.freeze({ unlock: 8, group: "board", weight: 0.7, intro: false, params: Object.freeze({}) }),
     tilt: Object.freeze({ unlock: 8, group: "turn", weight: 1, intro: true, params: Object.freeze({ degrees: [12, 38] }) }),
     slide: Object.freeze({ unlock: 15, group: "move", weight: 1, intro: true, params: Object.freeze({ amplitude: [24, 50], speed: [1.5, 2.3] }) }),
+    // Narrow hoop: the mouth shrinks to this share of the normal width (aim precision).
+    narrow: Object.freeze({ unlock: 22, group: "size", weight: 0.8, intro: true, params: Object.freeze({ scale: [0.88, 0.76] }) }),
     bar: Object.freeze({ unlock: 30, group: "block", weight: 1, intro: true, params: Object.freeze({ length: [50, 72] }) }),
     peg: Object.freeze({ unlock: 40, group: "block", weight: 0.8, intro: true, params: Object.freeze({ radius: [9, 12] }) }),
+    // Bounce pad: a springy band that throws the ball off harder than it came in.
+    pad: Object.freeze({ unlock: 48, group: "block", weight: 0.9, intro: true, params: Object.freeze({ length: [46, 62] }) }),
     swing: Object.freeze({ unlock: 55, group: "turn", weight: 1, intro: true, params: Object.freeze({ degrees: [20, 40], speed: [1.2, 1.9] }) }),
     lift: Object.freeze({ unlock: 70, group: "move", weight: 0.9, intro: true, params: Object.freeze({ amplitude: [16, 30], speed: [1.4, 2] }) }),
     slider: Object.freeze({ unlock: 85, group: "block", weight: 1, intro: true, params: Object.freeze({ amplitude: [44, 68], speed: [1, 1.6], length: [40, 52] }) }),
+    // Blinker: a bar that is solid for part of a visible cycle (timing, without motion).
+    blinker: Object.freeze({ unlock: 92, group: "block", weight: 0.9, intro: true, params: Object.freeze({ length: [58, 78], period: [2.8, 2.1], onShare: [0.42, 0.55] }) }),
     orbit: Object.freeze({ unlock: 115, group: "move", weight: 0.8, intro: true, params: Object.freeze({ radius: [14, 26], speed: [1.2, 1.9] }) }),
     spin: Object.freeze({ unlock: 130, group: "turn", weight: 1, intro: true, params: Object.freeze({ speed: [0.85, 1.45] }) }),
-    spinner: Object.freeze({ unlock: 170, group: "block", weight: 1, intro: true, params: Object.freeze({ length: [56, 74], speed: [0.9, 1.6] }) })
+    spinner: Object.freeze({ unlock: 170, group: "block", weight: 1, intro: true, params: Object.freeze({ length: [56, 74], speed: [0.9, 1.6] }) }),
+    // Short aim: only this share of the aim preview's dots is shown (judge the arc yourself).
+    fog: Object.freeze({ unlock: 185, group: "aim", weight: 0.8, intro: true, params: Object.freeze({ reveal: [0.6, 0.34] }) })
   });
 
   // Unlock order, also the order of the intro hoops.
   const MECHANIC_ORDER = Object.freeze(Object.keys(MECHANICS).sort((a, b) => MECHANICS[a].unlock - MECHANICS[b].unlock));
 
-  // Pairs that may share a transition once score >= COMBO_SCORE. Spin, orbit and the moving
-  // obstacles stay alone: each is already the hardest version of its group.
+  // Pairs that may share a transition once score >= COMBO_SCORE. Spin, orbit, the moving
+  // obstacles and the blinker stay alone: each is already the hardest version of its group.
   const COMBO_PAIRS = Object.freeze([
     ["slide", "tilt"], ["lift", "tilt"],
     ["slide", "bar"], ["slide", "peg"], ["lift", "bar"], ["lift", "peg"],
-    ["tilt", "bar"], ["tilt", "peg"], ["swing", "bar"], ["swing", "peg"]
+    ["tilt", "bar"], ["tilt", "peg"], ["swing", "bar"], ["swing", "peg"],
+    ["narrow", "slide"], ["narrow", "tilt"], ["narrow", "lift"], ["narrow", "bar"], ["narrow", "peg"],
+    ["pad", "slide"], ["pad", "tilt"], ["pad", "narrow"],
+    ["fog", "slide"], ["fog", "tilt"], ["fog", "narrow"], ["fog", "bar"], ["fog", "peg"]
   ].map((pair) => Object.freeze(pair)));
 
   // Transition budget by score: how many "challenge units" (one feature or one hard geometry each).

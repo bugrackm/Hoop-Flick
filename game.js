@@ -203,8 +203,14 @@
   // Launcher: while aiming, the hoop holding the ball turns its mouth toward the shot (any
   // direction), pivoting around the ball. The turn is drawn only; the physics hoop stays put and
   // the launch-net walls/catch use the aim frame captured at release, so preview == flight.
+  // Two springs: while aiming the launcher follows the finger critically damped (no overshoot, no
+  // wobble: playtest 2026-11-07 "kayıyor, kontrolsüz" with the old bouncy spring); after a release
+  // and when it rights itself it uses the bouncy one, which reads as a slingshot snap.
   const LAUNCHER_SPRING = Object.freeze({ stiffness: 340, damping: 17, maxStep: 1 / 240 });
-  const LAUNCHER_MIN_AIM_PULL = 5;
+  const LAUNCHER_AIM_SPRING = Object.freeze({ stiffness: 1156, damping: 68, maxStep: 1 / 240 });
+  // The launcher only turns for a pull that would really shoot, so a touch or the first pixels of a
+  // drag (whose direction is mostly finger noise) don't swing it around.
+  const LAUNCHER_MIN_AIM_PULL = MIN_SHOT_PULL;
   const LAUNCHER_POUCH_PULLBACK = 7;
   const LAUNCHER_POUCH_STRETCH = 10;
   const HOOP_CATCH_BOB = Object.freeze({ duration: 0.42, depth: 5 });
@@ -212,6 +218,9 @@
   // About the top 15 % of all shots that can score a typical gap (measured on a fine pull grid).
   const HIGH_ARC_HEIGHT = 165;
   const HIGH_ARC_BONUS = 1;
+  // Narrow hoop and short aim (ladder mechanics "narrow" and "fog"): hard floors under their params.
+  const NARROW_HOOP_MIN_SCALE = 0.72;
+  const FOG_MIN_REVEAL = 0.3;
   const BALL_SETTLE_DURATION = 0.24;
   const BALL_SETTLE_INPUT_DELAY = 0.1;
   const TIMED_SHOT_START_SCORE = 100;
@@ -279,7 +288,7 @@
   const INTRO_MAX_FAILURES = 2;
   // A hard transition with a single feature shows that feature stronger.
   const HARD_INTENSITY_BONUS = 0.25;
-  const NO_FEATURES = Object.freeze({ motion: null, turn: null, board: false, obstacle: null });
+  const NO_FEATURES = Object.freeze({ motion: null, turn: null, board: false, obstacle: null, size: null, aim: null });
   // Smallest motion worth showing; below this the hoop just looks jittery.
   const MIN_MOVE_AMPLITUDE = Object.freeze({ horizontal: 16, orbit: 10 });
   const CHALLENGED_MIN_VERTICAL_GAP = 142;
@@ -2164,13 +2173,18 @@
     const board = Boolean(features.board) && !motion && !turn;
     const motionParams = motion ? params[motion] || {} : {};
     const turnParams = turn ? params[turn] || {} : {};
+    const narrowScale = features.size === "narrow" ? clamp(params.narrow?.scale ?? 1, NARROW_HOOP_MIN_SCALE, 1) : 1;
     const hoop = {
       id,
       x,
       y,
       baseX: x,
       baseY: y,
-      w: HOOP_WIDTH,
+      // A narrow target opens back up to the normal width once it holds the ball (settle).
+      w: HOOP_WIDTH * narrowScale,
+      narrow: narrowScale < 1,
+      // Short aim: share of the aim preview shown while this hoop is the target (0 = full preview).
+      fogReveal: features.aim === "fog" ? clamp(params.fog?.reveal ?? 1, FOG_MIN_REVEAL, 1) : 0,
       boardW: 74,
       boardH: 52,
       role: HOOP_ROLE.INACTIVE,
@@ -2253,6 +2267,7 @@
   }
 
   function placeBallInHoop(hoop) {
+    restoreLauncherShape(hoop);
     if (hoop.rotation !== 0) turnHoopAboutRest(hoop, 0);
     const restingPoint = hoopToWorld(hoop, 0, NET_REST_Y);
     ball.x = restingPoint.x;
@@ -2518,6 +2533,8 @@
     if (entry.group === "move") return !features.motion;
     if (entry.group === "turn") return !features.turn;
     if (entry.group === "block") return !features.obstacle;
+    if (entry.group === "size") return !features.size;
+    if (entry.group === "aim") return !features.aim;
     return false;
   }
 
@@ -2527,10 +2544,12 @@
     else if (group === "turn") features.turn = mechanic;
     else if (group === "block") features.obstacle = mechanic;
     else if (group === "board") features.board = true;
+    else if (group === "size") features.size = mechanic;
+    else if (group === "aim") features.aim = mechanic;
   }
 
   function getFeatureList(features) {
-    return [features.motion, features.turn, features.obstacle, features.board ? "board" : null].filter(Boolean);
+    return [features.motion, features.turn, features.obstacle, features.board ? "board" : null, features.size, features.aim].filter(Boolean);
   }
 
   // Weighted by the ladder: the newest mechanic is in the spotlight for a while after its unlock.
@@ -2888,6 +2907,8 @@
 
   function getObstacleDistanceAt(obstacle, time, x, y) {
     const pose = Obstacles.getPose(obstacle, time);
+    // A blinker that is not solid at this moment cannot block.
+    if (pose.solid === false) return Infinity;
     const dx = pose.bx - pose.ax;
     const dy = pose.by - pose.ay;
     const lengthSquared = dx * dx + dy * dy;
@@ -2934,12 +2955,18 @@
   function getObstaclePeriod(obstacle) {
     if (obstacle.kind === "slider" && obstacle.speed > 0) return (Math.PI * 2) / obstacle.speed;
     if (obstacle.kind === "spinner" && obstacle.speed !== 0) return Math.PI / Math.abs(obstacle.speed);
+    if (obstacle.kind === "blinker" && obstacle.period > 0) return obstacle.period;
     return 0;
   }
 
   function buildObstacleSpec(kind, x, y, params) {
     if (kind === "bar") return { kind, x, y, length: params.length, angle: random(-0.6, 0.6) };
     if (kind === "peg") return { kind, x, y, radius: params.radius };
+    if (kind === "pad") return { kind, x, y, length: params.length, angle: random(-0.75, 0.75) };
+    if (kind === "blinker") {
+      const period = params.period || 2.4;
+      return { kind, x, y, length: params.length, angle: random(-0.5, 0.5), period, onShare: params.onShare || 0.5, phase: random(0, period) };
+    }
     if (kind === "slider") {
       return { kind, x, y, length: params.length, angle: 0, axisAngle: random(-0.18, 0.18), amplitude: params.amplitude, speed: params.speed, phase: random(0, Math.PI * 2) };
     }
@@ -2959,11 +2986,13 @@
   function isObstaclePlacementFair(obstacle, source, target, poses, shotsByPose) {
     const bounds = Obstacles.getBounds(obstacle);
     if (bounds.minX < WALL_INSET + OBSTACLE_WALL_GAP || bounds.maxX > WORLD_W - WALL_INSET - OBSTACLE_WALL_GAP) return false;
-    const half = target.w * 0.5;
-    const hoopPoints = [[-half, 0], [half, 0], [0, NET_REST_Y], [0, 52], [0, -COIN_RADIUS * 2]];
+    // The launcher is always full width; only the target may be narrow.
+    const getHoopPoints = (half) => [[-half, 0], [half, 0], [0, NET_REST_Y], [0, 52], [0, -COIN_RADIUS * 2]];
+    const sourcePoints = getHoopPoints(HOOP_WIDTH * 0.5);
+    const targetPoints = getHoopPoints(target.w * 0.5);
     const sourcePose = { x: source.x, y: source.y, rotation: source.rotation };
     for (const pose of [sourcePose, ...poses]) {
-      for (const [localX, localY] of hoopPoints) {
+      for (const [localX, localY] of pose === sourcePose ? sourcePoints : targetPoints) {
         const point = poseToWorld(pose, localX, localY);
         if (Obstacles.sweptClearance(point.x, point.y, obstacle) < OBSTACLE_HOOP_CLEARANCE) return false;
       }
@@ -3015,7 +3044,8 @@
     // the lowest ones peak right above the target. A static obstacle therefore hangs at the apex
     // of a middle lob: a flatter shot passes under it, a higher lob (often a +1 high drop) over
     // it. A moving one crosses the bundle between the hoops and is beaten by timing.
-    const moving = kind === "slider" || kind === "spinner";
+    // Timed obstacles are beaten by timing (moving ones, and the blinker that switches on and off).
+    const moving = kind === "slider" || kind === "spinner" || kind === "blinker";
     const gapTop = poses[0].y;
     const gapBottom = shots[0].startY;
     const apexes = shots.map((shot) => {
@@ -3043,9 +3073,12 @@
         const side = Math.random() < 0.5 ? -1 : 1;
         // A slider's travel covers the shots off its centre, so a gap opens each pass; a spinner's
         // hub sits beside the shots and only its blade sweeps across them.
+        // A blinker sits right on the bundle: while it is solid the direct shots are closed.
         const offset = kind === "slider"
           ? (params.amplitude || 40) * random(0.45, 0.8)
-          : (params.length || 60) * 0.5 * random(0.5, 0.75);
+          : kind === "blinker"
+            ? random(0, 8)
+            : (params.length || 60) * 0.5 * random(0.5, 0.75);
         const offsetAngle = kind === "slider" ? 0 : heading + Math.PI * 0.5;
         x = point.x + Math.cos(offsetAngle) * offset * side;
         y = point.y + Math.sin(offsetAngle) * offset * side;
@@ -3750,7 +3783,8 @@
     if (!contact.impact) return;
     hoop.obstacleFlash = OBSTACLE_FLASH_DURATION;
     if (contact.kick) hoop.obstacleSquash = OBSTACLE_SQUASH_DURATION;
-    onBallImpact(contact.nx, contact.ny, contact.approachSpeed, hoop.obstacle.kind === "peg" ? "bumper" : "board");
+    const springy = hoop.obstacle.kind === "peg" || hoop.obstacle.kind === "pad";
+    onBallImpact(contact.nx, contact.ny, contact.approachSpeed, springy ? "bumper" : "board");
   }
 
   function playHoopReleaseAnimation(hoop, pull) {
@@ -3835,6 +3869,9 @@
     if (settle.hoopStartRotation) {
       setHoopRotationAboutRest(hoop, settle.hoopStartRotation * (1 - eased), settle.pivotX, settle.pivotY);
     }
+    if (settle.hoopStartWidth && settle.hoopStartWidth < HOOP_WIDTH) {
+      hoop.w = settle.hoopStartWidth + (HOOP_WIDTH - settle.hoopStartWidth) * eased;
+    }
     const localX = settle.startX * (1 - eased);
     const localY = settle.startY + (NET_REST_Y - settle.startY) * eased;
     const point = hoopToWorld(hoop, localX, localY);
@@ -3857,6 +3894,13 @@
       setHoopRotationAboutRest(hoop, 0, settle.pivotX, settle.pivotY);
     }
     placeBallInHoop(hoop);
+  }
+
+  // A hoop that holds the ball is a launcher: always the normal width and the full aim preview.
+  function restoreLauncherShape(hoop) {
+    hoop.w = HOOP_WIDTH;
+    hoop.narrow = false;
+    hoop.fogReveal = 0;
   }
 
   function updateLaunchHoopSafety() {
@@ -4696,6 +4740,7 @@
       hoopStartRotation: normalizeAngle(hoop.rotation),
       pivotX: pivot.x,
       pivotY: pivot.y,
+      hoopStartWidth: hoop.w,
       recatch
     };
   }
@@ -5082,6 +5127,7 @@
     for (const hoop of hoops) drawHoopMotionPath(hoop);
     for (const hoop of hoops) drawHoop(hoop);
     for (const hoop of hoops) drawHoopObstacle(hoop);
+    drawTargetFogMark();
     drawActiveCoin();
     drawShotRings();
     drawParticles();
@@ -5693,11 +5739,16 @@
     return getGhostPartialPull();
   }
 
-  function getLauncherAimTarget(hoop) {
-    if (hoop.id !== currentHoopId || state !== "playing") return 0;
+  // True while the ball is held and a real (or ghost-hand) pull is turning this launcher.
+  function isLauncherAiming(hoop) {
+    if (hoop.id !== currentHoopId || state !== "playing") return false;
     const pull = getLauncherPull();
-    if (!pull || pull.len < LAUNCHER_MIN_AIM_PULL) return 0;
-    return normalizeAngle(getAimRotation(pull) - hoop.rotation);
+    return Boolean(pull) && pull.len >= LAUNCHER_MIN_AIM_PULL;
+  }
+
+  function getLauncherAimTarget(hoop) {
+    if (!isLauncherAiming(hoop)) return 0;
+    return normalizeAngle(getAimRotation(getLauncherPull()) - hoop.rotation);
   }
 
   // Drawn-only spring: the launcher swings toward the aim, and after a release it snaps back
@@ -5707,11 +5758,12 @@
     let angle = hoop.aimAngle || 0;
     let velocity = hoop.aimVelocity || 0;
     if (!angle && !velocity && !target) return;
-    const steps = Math.max(1, Math.ceil(dt / LAUNCHER_SPRING.maxStep));
+    const spring = isLauncherAiming(hoop) ? LAUNCHER_AIM_SPRING : LAUNCHER_SPRING;
+    const steps = Math.max(1, Math.ceil(dt / spring.maxStep));
     const h = dt / steps;
     for (let i = 0; i < steps; i += 1) {
       const error = normalizeAngle(target - angle);
-      velocity += (error * LAUNCHER_SPRING.stiffness - velocity * LAUNCHER_SPRING.damping) * h;
+      velocity += (error * spring.stiffness - velocity * spring.damping) * h;
       angle += velocity * h;
     }
     angle = normalizeAngle(angle);
@@ -6072,14 +6124,59 @@
     });
   }
 
-  function drawTrajectoryPoints(prediction, ratio, colors) {
+  // `reveal` (0..1, 0 = all): the short-aim target only shows the first part of the preview, and
+  // the last shown dots fade into the "mist" so the cut reads as deliberate, not as a glitch.
+  function drawTrajectoryPoints(prediction, ratio, colors, reveal = 0) {
     ctx.fillStyle = ratio > 0.72 ? colors.trajectoryHot : colors.trajectory;
-    prediction.points.forEach((point, i) => {
-      ctx.globalAlpha = 0.76 - i * (0.52 / point.pointCount);
+    const total = prediction.points.length;
+    const shown = reveal > 0 ? Math.max(2, Math.ceil(total * reveal)) : total;
+    for (let i = 0; i < Math.min(total, shown); i += 1) {
+      const point = prediction.points[i];
+      let alpha = 0.76 - i * (0.52 / point.pointCount);
+      if (shown < total) alpha *= clamp((shown - i) / 2.2, 0.18, 1);
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
       ctx.arc(point.x, point.y, Math.max(2.1, 4.2 - i * 0.16), 0, Math.PI * 2);
       ctx.fill();
-    });
+    }
+  }
+
+  function getTargetFogReveal() {
+    const target = getHoopById(targetHoopId);
+    return target && target.role === HOOP_ROLE.TARGET ? target.fogReveal || 0 : 0;
+  }
+
+  // Telegraph for a short-aim target: a small cel cloud floating beside its rim, toward the middle.
+  function drawTargetFogMark() {
+    const target = getHoopById(targetHoopId);
+    if (!target || target.role !== HOOP_ROLE.TARGET || !(target.fogReveal > 0)) return;
+    const colors = getCanvasTheme();
+    const art = getHoopArtPalette();
+    const alpha = clamp(target.entranceTimer ?? 1, 0, 1);
+    const bob = reduceMotion ? 0 : Math.sin(ballArtClock * 2.4) * 1.6;
+    const side = target.x < WORLD_W * 0.5 ? 1 : -1;
+    const cx = target.x + side * (target.w * 0.5 + 20);
+    const cy = target.y - 26 + bob;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    const puffs = [[-8, 2, 7], [0, -3, 9], [9, 1, 7], [3, 5, 6]];
+    ctx.fillStyle = art.ink;
+    for (const [px, py, r] of puffs) {
+      ctx.beginPath();
+      ctx.arc(cx + px, cy + py, r + 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = darkMode ? "#d9e2f2" : "#ffffff";
+    for (const [px, py, r] of puffs) {
+      ctx.beginPath();
+      ctx.arc(cx + px, cy + py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = darkMode ? "#9aa8c2" : "#c9d3e3";
+    ctx.beginPath();
+    ctx.ellipse(cx + 1, cy + 6, 11, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawDebugShots() {
@@ -6102,7 +6199,7 @@
     const colors = getCanvasTheme();
     const pull = getPullVector();
     ctx.save();
-    drawTrajectoryPoints(predictShot(pull), pull.ratio, colors);
+    drawTrajectoryPoints(predictShot(pull), pull.ratio, colors, getTargetFogReveal());
     // Pull band and power ring follow the ball where it is drawn (sunk into the pouch).
     const offset = getBallDrawOffset();
     const bx = ball.x + offset.x;

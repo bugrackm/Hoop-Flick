@@ -4,7 +4,9 @@
   const TAU = Math.PI * 2;
   const IMPACT_SPEED = 40;
   const BUMPER_SPEED = 220;
-  const KINDS = Object.freeze(["bar", "peg", "slider", "spinner"]);
+  // At the game's gravity 1420, 300 world units/s gives a visible ~32-unit hop.
+  const PAD_SPEED = 300;
+  const KINDS = Object.freeze(["bar", "peg", "slider", "spinner", "pad", "blinker"]);
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -36,7 +38,9 @@
       bar: { length: 60, minLength: 24, maxLength: 110, radius: 5, minRadius: 3, maxRadius: 9, restitution: 0.62 },
       peg: { length: 0, minLength: 0, maxLength: 0, radius: 10, minRadius: 6, maxRadius: 16, restitution: 0.9 },
       slider: { length: 54, minLength: 24, maxLength: 96, radius: 5, minRadius: 3, maxRadius: 9, restitution: 0.62 },
-      spinner: { length: 64, minLength: 30, maxLength: 100, radius: 5, minRadius: 3, maxRadius: 9, restitution: 0.7 }
+      spinner: { length: 64, minLength: 30, maxLength: 100, radius: 5, minRadius: 3, maxRadius: 9, restitution: 0.7 },
+      pad: { length: 56, minLength: 36, maxLength: 90, radius: 5, minRadius: 5, maxRadius: 5, restitution: 1 },
+      blinker: { length: 60, minLength: 30, maxLength: 100, radius: 5, minRadius: 5, maxRadius: 5, restitution: 0.62 }
     }[kind];
     const obstacle = {
       kind,
@@ -54,8 +58,27 @@
       obstacle.phase = finiteOr(spec.phase, 0);
     } else if (kind === "spinner") {
       obstacle.speed = clamp(finiteOr(spec.speed, 1.4), -4, 4);
+    } else if (kind === "blinker") {
+      obstacle.period = clamp(finiteOr(spec.period, 2.4), 1.2, 4);
+      obstacle.onShare = clamp(finiteOr(spec.onShare, 0.5), 0.3, 0.7);
+      obstacle.phase = finiteOr(spec.phase, 0);
     }
     return Object.freeze(obstacle);
+  }
+
+  function getCycle(obstacle, time) {
+    if (obstacle.kind !== "blinker") return { solid: true, charge: 0 };
+    const elapsed = finiteOr(time, 0) + obstacle.phase;
+    // Positive modulo supports negative times/offsets without shifting boundaries.
+    let cycle = elapsed % obstacle.period;
+    if (cycle < 0) cycle += obstacle.period;
+    const onDuration = obstacle.period * obstacle.onShare;
+    const solid = cycle < onDuration;
+    return { solid, charge: clamp(solid ? cycle / onDuration : (cycle - onDuration) / (obstacle.period - onDuration), 0, 1) };
+  }
+
+  function isSolid(obstacle, time) {
+    return getCycle(obstacle, time).solid;
   }
 
   function getPose(obstacle, time) {
@@ -82,7 +105,7 @@
     }
     const halfX = Math.cos(angle) * obstacle.length * 0.5;
     const halfY = Math.sin(angle) * obstacle.length * 0.5;
-    return { x, y, angle, ax: x - halfX, ay: y - halfY, bx: x + halfX, by: y + halfY, vx, vy, omega };
+    return { x, y, angle, ax: x - halfX, ay: y - halfY, bx: x + halfX, by: y + halfY, vx, vy, omega, ...getCycle(obstacle, t) };
   }
 
   function closestPoint(x, y, ax, ay, bx, by) {
@@ -100,6 +123,7 @@
 
   function collideBody(body, radius, obstacle, time, dt) {
     const pose = getPose(obstacle, time);
+    if (!pose.solid) return null;
     const point = closestPoint(body.x, body.y, pose.ax, pose.ay, pose.bx, pose.by);
     const dx = body.x - point.x;
     const dy = body.y - point.y;
@@ -139,11 +163,18 @@
     const tangentDamping = impact ? 0.98 : Math.pow(0.98, Math.max(0, finiteOr(dt, 0)) * 60);
     let outgoingNormal = normalSpeed;
     if (approachSpeed > 0) outgoingNormal = approachSpeed * obstacle.restitution;
+    // A resting pad is passive, including when its restitution exceeds one.
+    if (obstacle.kind === "pad" && !impact && approachSpeed > 0) outgoingNormal = approachSpeed * Math.min(0.62, obstacle.restitution);
     let kick = false;
     if (obstacle.kind === "peg" && impact && outgoingNormal < BUMPER_SPEED) {
       outgoingNormal = BUMPER_SPEED;
       kick = true;
     } else if (obstacle.kind === "peg" && impact) {
+      kick = true;
+    } else if (obstacle.kind === "pad" && impact) {
+      // Never more than elastic: a restitution above 1 would compound on a ball hopping on a flat
+      // pad (measured: hop 60 → 207 in ten bounces). Slow balls still leave at PAD_SPEED.
+      outgoingNormal = Math.max(Math.min(outgoingNormal, approachSpeed), PAD_SPEED);
       kick = true;
     }
     return {
@@ -261,7 +292,10 @@
     ctx.fill();
   }
 
-  function drawPlank(ctx, obstacle, pose, palette, flash) {
+  // Cel ink sits ~1.5 px outside the collision capsule: bold outlines are the game's style.
+  const INK_EXTRA = 3;
+
+  function drawPlank(ctx, obstacle, pose, palette, flash, plain) {
     const body = mixColor(palette.body, "#ffffff", flash * 0.75);
     const shade = mixColor(palette.shade, "#ffffff", flash * 0.55);
     const light = mixColor(palette.light, "#ffffff", flash * 0.75);
@@ -270,12 +304,34 @@
     ctx.translate(pose.x, pose.y);
     ctx.rotate(pose.angle);
     ctx.lineCap = "round";
-    strokeSegment(ctx, obstacle.length, 0, obstacle.radius * 2 + 3, palette.ink);
+    strokeSegment(ctx, obstacle.length, 0, obstacle.radius * 2 + INK_EXTRA, palette.ink);
     strokeSegment(ctx, obstacle.length, 0, obstacle.radius * 2, body);
     strokeSegment(ctx, obstacle.length * 0.94, shadeSide * obstacle.radius * 0.48, obstacle.radius * 0.58, shade);
     strokeSegment(ctx, obstacle.length * 0.9, -shadeSide * obstacle.radius * 0.52, Math.max(1.2, obstacle.radius * 0.32), light);
-    drawBolt(ctx, -obstacle.length * 0.34, palette);
-    drawBolt(ctx, obstacle.length * 0.34, palette);
+    // Inset end sleeves and seams keep all detail inside the collision capsule.
+    for (const side of [-1, 1]) {
+      const end = side * obstacle.length * 0.5;
+      ctx.strokeStyle = shade;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(end - side * 4, -obstacle.radius * 0.6);
+      ctx.lineTo(end - side * 4, obstacle.radius * 0.6);
+      ctx.stroke();
+    }
+    if (obstacle.kind === "spinner") {
+      ctx.strokeStyle = light;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        ctx.moveTo(side * obstacle.length * 0.18, -obstacle.radius * 0.35);
+        ctx.lineTo(side * obstacle.length * 0.28, obstacle.radius * 0.35);
+      }
+      ctx.stroke();
+    }
+    if (!plain) {
+      drawBolt(ctx, -obstacle.length * 0.34, palette);
+      drawBolt(ctx, obstacle.length * 0.34, palette);
+    }
     ctx.restore();
   }
 
@@ -310,17 +366,19 @@
 
   function drawPeg(ctx, obstacle, palette, flash, squash) {
     const body = mixColor(palette.accent, "#ffffff", flash * 0.85);
-    const scale = 1 + squash * 0.18;
     ctx.save();
     ctx.translate(obstacle.x, obstacle.y);
-    ctx.scale(scale * (1 + squash * 0.05), scale);
     ctx.fillStyle = palette.ink;
     ctx.beginPath();
-    ctx.arc(0, 0, obstacle.radius + 2.2, 0, TAU);
+    ctx.arc(0, 0, obstacle.radius + INK_EXTRA * 0.5, 0, TAU);
     ctx.fill();
     ctx.fillStyle = body;
     ctx.beginPath();
     ctx.arc(0, 0, obstacle.radius, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = mixColor(body, palette.ink, 0.35);
+    ctx.beginPath();
+    ctx.arc(0, 0, obstacle.radius - 0.5, 0, Math.PI);
     ctx.fill();
     // A white ring makes a bumper read as a bumper, not a coin, even at game size.
     ctx.strokeStyle = "#ffffff";
@@ -328,7 +386,11 @@
     ctx.beginPath();
     ctx.arc(0, 0, obstacle.radius * 0.58, 0, TAU);
     ctx.stroke();
-    ctx.fillStyle = palette.light;
+    ctx.fillStyle = mixColor(body, "#ffffff", 0.2 + flash * 0.65);
+    ctx.beginPath();
+    ctx.arc(0, squash * obstacle.radius * 0.12, obstacle.radius * (0.32 - squash * 0.06), 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = mixColor(palette.light, "#ffffff", flash);
     ctx.beginPath();
     ctx.arc(-obstacle.radius * 0.34, -obstacle.radius * 0.38, Math.max(1.5, obstacle.radius * 0.13), 0, TAU);
     ctx.fill();
@@ -349,12 +411,113 @@
   function drawHub(ctx, obstacle, palette, flash) {
     ctx.fillStyle = palette.ink;
     ctx.beginPath();
-    ctx.arc(obstacle.x, obstacle.y, obstacle.radius + 2.4, 0, TAU);
+    ctx.arc(obstacle.x, obstacle.y, obstacle.radius + INK_EXTRA * 0.5, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = mixColor(palette.shade, "#ffffff", flash * 0.6);
+    ctx.beginPath();
+    ctx.arc(obstacle.x, obstacle.y, obstacle.radius - 0.5, 0, TAU);
     ctx.fill();
     ctx.fillStyle = mixColor(palette.light, "#ffffff", flash * 0.8);
     ctx.beginPath();
     ctx.arc(obstacle.x, obstacle.y, obstacle.radius * 0.58, 0, TAU);
     ctx.fill();
+    ctx.strokeStyle = palette.ink;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(obstacle.x - 1.5, obstacle.y + 1);
+    ctx.lineTo(obstacle.x + 1.5, obstacle.y - 1);
+    ctx.stroke();
+  }
+
+  function drawCarriage(ctx, obstacle, pose, palette, flash) {
+    ctx.save();
+    ctx.translate(pose.x, pose.y);
+    ctx.rotate(pose.angle);
+    ctx.lineCap = "round";
+    strokeSegment(ctx, 8, 0, obstacle.radius * 2 + 2, palette.ink);
+    strokeSegment(ctx, 7, 0, obstacle.radius * 2 - 1, mixColor(palette.light, "#ffffff", flash));
+    drawBolt(ctx, 0, palette);
+    ctx.restore();
+  }
+
+  function drawPad(ctx, obstacle, pose, palette, flash, squash) {
+    // Cyan is distinct from both gold collectibles and pink-red bumpers.
+    const band = mixColor("#24cfc5", "#ffffff", flash * 0.85);
+    const half = obstacle.length * 0.5;
+    const dip = squash * 2;
+    ctx.save();
+    ctx.translate(pose.x, pose.y);
+    ctx.rotate(pose.angle);
+    ctx.lineCap = "round";
+    for (const [width, color, offset] of [[8, palette.ink, 0], [6, band, 0], [1.2, "#d6fffa", -1.2]]) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-half, offset);
+      ctx.quadraticCurveTo(0, dip * 2 + offset, half, offset);
+      ctx.stroke();
+    }
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = palette.ink;
+      ctx.beginPath();
+      ctx.arc(side * half, 0, obstacle.radius + 1, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = mixColor(palette.light, "#ffffff", flash);
+      ctx.beginPath();
+      ctx.arc(side * half, 0, obstacle.radius - 1, 0, TAU);
+      ctx.fill();
+      drawBolt(ctx, side * half, palette);
+    }
+    ctx.restore();
+  }
+
+  function drawBlinker(ctx, obstacle, pose, palette, flash, darkBackground) {
+    const warning = darkBackground ? "#b9a4ff" : "#6945b8";
+    const telegraph = pose.solid ? clamp((pose.charge - 0.75) / 0.25, 0, 1) : clamp((pose.charge - 0.7) / 0.3, 0, 1);
+    ctx.save();
+    if (pose.solid) {
+      // Drain the surface as the solid window ends; the outline stays readable.
+      drawPlank(ctx, obstacle, pose, { ...palette, body: mixColor(warning, palette.shade, telegraph * 0.7) }, flash, true);
+    }
+    ctx.translate(pose.x, pose.y);
+    ctx.rotate(pose.angle);
+    ctx.lineCap = "round";
+    if (!pose.solid) {
+      ctx.globalAlpha *= 0.25 + telegraph * 0.65;
+      ctx.strokeStyle = mixColor(warning, "#ffffff", flash);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(-obstacle.length * 0.5, -obstacle.radius);
+      ctx.lineTo(obstacle.length * 0.5, -obstacle.radius);
+      ctx.arc(obstacle.length * 0.5, 0, obstacle.radius, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(-obstacle.length * 0.5, obstacle.radius);
+      ctx.arc(-obstacle.length * 0.5, 0, obstacle.radius, Math.PI / 2, Math.PI * 1.5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // The final off-phase closes the gaps, still with no filled ghost body.
+      if (telegraph > 0) {
+        ctx.lineWidth = 1 + telegraph;
+        ctx.stroke();
+      }
+    } else {
+      // Hazard stripes, clipped to the plank so they never poke out of the outline.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-obstacle.length * 0.5, -obstacle.radius, obstacle.length, obstacle.radius * 2);
+      ctx.clip();
+      ctx.strokeStyle = mixColor(warning, "#ffffff", 0.55 + flash * 0.45);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = -obstacle.length * 0.5 + 6; x < obstacle.length * 0.5; x += 9) {
+        ctx.moveTo(x - 3, obstacle.radius);
+        ctx.lineTo(x + 3, -obstacle.radius);
+      }
+      ctx.stroke();
+      ctx.restore();
+      strokeSegment(ctx, obstacle.length * (1 - telegraph), -obstacle.radius * 0.55, 1.2, palette.light);
+    }
+    ctx.restore();
   }
 
   function draw(ctx, obstacle, time, palette, options) {
@@ -370,12 +533,17 @@
     if (obstacle.kind === "spinner") drawSpinnerGuide(ctx, obstacle, palette);
     if (obstacle.kind === "peg") {
       drawPeg(ctx, obstacle, palette, flash, squash);
+    } else if (obstacle.kind === "pad") {
+      drawPad(ctx, obstacle, pose, palette, flash, squash);
+    } else if (obstacle.kind === "blinker") {
+      drawBlinker(ctx, obstacle, pose, palette, flash, !!config.darkBackground);
     } else {
       drawPlank(ctx, obstacle, pose, palette, flash);
+      if (obstacle.kind === "slider") drawCarriage(ctx, obstacle, pose, palette, flash);
       if (obstacle.kind === "spinner") drawHub(ctx, obstacle, palette, flash);
     }
     ctx.restore();
   }
 
-  global.HoopFlickObstacles = Object.freeze({ KINDS, create, getPose, collideBody, sweptClearance, getBounds, draw });
+  global.HoopFlickObstacles = Object.freeze({ KINDS, create, getPose, isSolid, collideBody, sweptClearance, getBounds, draw });
 })(typeof globalThis !== "undefined" ? globalThis : this);

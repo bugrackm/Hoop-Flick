@@ -173,3 +173,70 @@ test('the aim preview matches the real ball around the launcher, including net t
   assert.ok(touches > 0, 'at least one case meets a launch-net wall');
   assert.ok(catches > 0, 'at least one case falls back into the pouch');
 });
+
+test('while aiming the launcher follows the pull without overshoot and ignores tiny pulls', () => {
+  const g = loadGame();
+  const result = JSON.parse(g.evaluate(`
+    resetGame(false);
+    state = 'playing';
+    for (const other of hoops) if (other.id !== currentHoopId) other.x += 5000;
+    const hoop = getHoopById(currentHoopId);
+    placeBallInHoop(hoop);
+    activePointer = 1;
+    // A pull too short to shoot: the launcher stays upright.
+    drag = { pointerStartX: 0, pointerStartY: 0, pointerCurrentX: -MIN_SHOT_PULL * 0.8, pointerCurrentY: 0 };
+    for (let i = 0; i < 20; i++) updatePresentation(1 / 60);
+    const tiny = hoop.aimAngle || 0;
+    // A real pull to the right (shot 90°), then swung to the left (shot -60°).
+    drag.pointerCurrentX = -MAX_PULL * 0.7;
+    let peak = 0;
+    let at150ms = 0;
+    for (let i = 0; i < 60; i++) {
+      updatePresentation(1 / 120);
+      peak = Math.max(peak, hoop.aimAngle);
+      if (i === 17) at150ms = hoop.aimAngle;
+    }
+    const radians = -60 * Math.PI / 180;
+    drag.pointerCurrentX = Math.sin(-radians) * MAX_PULL * 0.7;
+    drag.pointerCurrentY = Math.cos(radians) * MAX_PULL * 0.7;
+    let low = 0;
+    for (let i = 0; i < 90; i++) {
+      updatePresentation(1 / 120);
+      low = Math.min(low, hoop.aimAngle);
+    }
+    JSON.stringify({ tiny, peak, at150ms, low, end: hoop.aimAngle });
+  `));
+  assert.equal(result.tiny, 0, 'a tiny pull does not turn the launcher');
+  assert.ok(result.peak <= Math.PI / 2 + 1e-3, `no overshoot past the aim (${result.peak})`);
+  assert.ok(result.at150ms > Math.PI / 2 * 0.9, `reaches the aim quickly (${result.at150ms})`);
+  assert.ok(result.low >= -Math.PI / 3 - 1e-3, `no overshoot on the swing back (${result.low})`);
+  assert.ok(Math.abs(result.end + Math.PI / 3) < 0.01, 'settles on the new aim');
+});
+
+test('a narrow short-aim target widens back while the ball settles and launches as a normal hoop', () => {
+  const g = loadGame();
+  const result = JSON.parse(g.evaluate(`
+    resetGame(false);
+    state = 'playing';
+    const source = getHoopById(currentHoopId);
+    const features = { ...NO_FEATURES, size: 'narrow', aim: 'fog' };
+    const hoop = makeHoop(source.x, source.y - 180, 99, source, { features, params: { narrow: { scale: 0.76 }, fog: { reveal: 0.34 } } });
+    hoops.push(hoop);
+    const spawned = { w: hoop.w, narrow: hoop.narrow, fog: hoop.fogReveal };
+    // The ball drops into the narrow hoop: it widens during the settle.
+    const rest = hoopToWorld(hoop, 0, NET_REST_Y);
+    ball.x = rest.x; ball.y = rest.y - 20; ball.held = false;
+    ball.settle = createSettle(hoop, false);
+    updateBallSettle(BALL_SETTLE_DURATION * 0.5);
+    const middle = hoop.w;
+    updateBallSettle(BALL_SETTLE_DURATION);
+    JSON.stringify({ spawned, middle, end: { w: hoop.w, narrow: hoop.narrow, fog: hoop.fogReveal, held: ball.held }, full: HOOP_WIDTH });
+  `));
+  assert.ok(result.spawned.narrow && Math.abs(result.spawned.w - result.full * 0.76) < 1e-9, 'spawned narrow');
+  assert.ok(Math.abs(result.spawned.fog - 0.34) < 1e-9, 'spawned with a short aim');
+  assert.ok(result.middle > result.spawned.w && result.middle < result.full, `widens during the settle (${result.middle})`);
+  assert.equal(result.end.w, result.full);
+  assert.equal(result.end.narrow, false);
+  assert.equal(result.end.fog, 0, 'the launcher shows the full preview');
+  assert.equal(result.end.held, true);
+});

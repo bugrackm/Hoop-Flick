@@ -27,6 +27,7 @@ function createRecordingContext(alpha = 0.8) {
   const stack = [];
   const forbidden = [];
   const alphaWrites = [];
+  const calls = [];
   let depth = 0;
   const methods = {
     save() { stack.push({ ...state, lineDash: state.lineDash.slice() }); depth += 1; },
@@ -41,13 +42,15 @@ function createRecordingContext(alpha = 0.8) {
       if (key === '__depth') return depth;
       if (key === '__forbidden') return forbidden;
       if (key === '__alphaWrites') return alphaWrites;
+      if (key === '__calls') return calls;
       if (key in state) return state[key];
       if (key in target) return target[key];
-      return () => {};
+      return (...args) => { calls.push([key, ...args]); };
     },
     set(target, key, value) {
       if (key === 'shadowBlur' || key === 'filter') forbidden.push(key);
       if (key === 'globalAlpha') alphaWrites.push(value);
+      calls.push(['set', key, value]);
       state[key] = value;
       return true;
     }
@@ -58,7 +61,7 @@ test('module surface is frozen, exact and free of forbidden drawing features', (
   const Obstacles = loadObstacles();
   assert.ok(Object.isFrozen(Obstacles));
   assert.ok(Object.isFrozen(Obstacles.KINDS));
-  assert.deepEqual(Array.from(Obstacles.KINDS), ['bar', 'peg', 'slider', 'spinner']);
+  assert.deepEqual(Array.from(Obstacles.KINDS), ['bar', 'peg', 'slider', 'spinner', 'pad', 'blinker']);
   for (const token of ['Math.random', 'createLinearGradient', 'createRadialGradient', 'createPattern', 'shadowBlur', 'filter']) {
     assert.equal(source.includes(token), false, `source must not contain ${token}`);
   }
@@ -146,7 +149,9 @@ test('sweptClearance is exact for static shapes and conservative for moving shap
   const Obstacles = loadObstacles();
   const bar = Obstacles.create({ kind: 'bar', x: 140, y: 180, length: 75, angle: 0.6, radius: 4 });
   const peg = Obstacles.create({ kind: 'peg', x: 180, y: 210, radius: 11 });
-  for (const obstacle of [bar, peg]) {
+  const pad = Obstacles.create({ kind: 'pad', x: 70, y: 140, angle: 0.4 });
+  const blinker = Obstacles.create({ kind: 'blinker', x: 90, y: 160, angle: -0.4 });
+  for (const obstacle of [bar, peg, pad, blinker]) {
     const pose = Obstacles.getPose(obstacle, 0);
     for (const point of [{ x: 0, y: 0 }, { x: 150, y: 190 }, { x: 300, y: 500 }]) {
       assert.ok(Math.abs(Obstacles.sweptClearance(point.x, point.y, obstacle) - capsuleDistance(point.x, point.y, pose, obstacle.radius)) < 1e-10);
@@ -185,8 +190,10 @@ test('draw balances canvas state, avoids forbidden calls and respects alpha', ()
     assert.equal(ctx.__depth, 0, `${kind} balances save and restore`);
     assert.deepEqual(ctx.__forbidden, [], `${kind} avoids forbidden canvas features`);
     assert.ok(ctx.__alphaWrites.length > 0);
-    assert.ok(ctx.__alphaWrites.every((value) => value <= 0.45), `${kind} alpha writes do not exceed the option`);
+    assert.equal(ctx.__alphaWrites[0], 0.8 * 0.45, `${kind} multiplies caller alpha`);
+    assert.ok(ctx.__alphaWrites.every((value) => value <= 0.8 * 0.45), `${kind} alpha writes do not exceed the multiplied option`);
     assert.equal(ctx.globalAlpha, 0.8, `${kind} restores the caller alpha`);
+    assert.deepEqual(ctx.lineDash, [], `${kind} leaves no dash behind`);
   }
 });
 
@@ -196,7 +203,9 @@ test('getBounds contains every sampled pose including capsule thickness', () => 
     Obstacles.create({ kind: 'bar', x: 100, y: 140, length: 90, angle: 0.7, radius: 8 }),
     Obstacles.create({ kind: 'peg', x: 180, y: 200, radius: 15 }),
     Obstacles.create({ kind: 'slider', x: 220, y: 280, length: 70, angle: -0.2, axisAngle: 1.1, amplitude: 80, speed: 2.3, radius: 4 }),
-    Obstacles.create({ kind: 'spinner', x: 250, y: 380, length: 95, speed: -3.1, radius: 6 })
+    Obstacles.create({ kind: 'spinner', x: 250, y: 380, length: 95, speed: -3.1, radius: 6 }),
+    Obstacles.create({ kind: 'pad', x: 120, y: 180, length: 90, angle: 1.1 }),
+    Obstacles.create({ kind: 'blinker', x: 170, y: 220, length: 100, angle: -0.8 })
   ];
   for (const obstacle of obstacles) {
     const bounds = Obstacles.getBounds(obstacle);
@@ -209,6 +218,149 @@ test('getBounds contains every sampled pose including capsule thickness', () => 
         assert.ok(point.y - obstacle.radius >= bounds.minY - 1e-9);
         assert.ok(point.y + obstacle.radius <= bounds.maxY + 1e-9);
       }
+    }
+  }
+});
+
+test('pad and blinker defaults, limits and invalid input fallbacks', () => {
+  const { create } = loadObstacles();
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(create({ kind: 'pad', x: 0, y: 0 })), {
+    kind: 'pad', x: 0, y: 0, length: 56, radius: 5, angle: 0, restitution: 1
+  });
+  assert.deepEqual(plain(create({ kind: 'blinker', x: 0, y: 0 })), {
+    kind: 'blinker', x: 0, y: 0, length: 60, radius: 5, angle: 0, restitution: 0.62,
+    period: 2.4, onShare: 0.5, phase: 0
+  });
+  for (const [kind, min, max] of [['pad', 36, 90], ['blinker', 30, 100]]) {
+    assert.equal(create({ kind, x: 0, y: 0, length: -10 }).length, min);
+    assert.equal(create({ kind, x: 0, y: 0, length: 999 }).length, max);
+    assert.equal(create({ kind, x: 0, y: 0, radius: 999 }).radius, 5);
+    assert.equal(create({ kind, x: NaN, y: 0 }), null);
+    assert.equal(create({ kind, x: 0, y: Infinity }), null);
+  }
+  const low = create({ kind: 'blinker', x: 0, y: 0, period: -1, onShare: -1, phase: -3 });
+  assert.equal(low.period, 1.2);
+  assert.equal(low.onShare, 0.3);
+  assert.equal(low.phase, -3);
+  const high = create({ kind: 'blinker', x: 0, y: 0, period: 99, onShare: 99 });
+  assert.equal(high.period, 4);
+  assert.equal(high.onShare, 0.7);
+  const fallback = create({ kind: 'blinker', x: 0, y: 0, period: NaN, onShare: Infinity, phase: NaN });
+  assert.equal(fallback.period, 2.4);
+  assert.equal(fallback.onShare, 0.5);
+  assert.equal(fallback.phase, 0);
+});
+
+test('pads boost impacts along the contact normal and keep resting contacts passive', () => {
+  const { create, collideBody, getPose } = loadObstacles();
+  for (const angle of [0, 0.7, Math.PI / 2]) {
+    const pad = create({ kind: 'pad', x: 100, y: 100, angle });
+    const nx = -Math.sin(angle), ny = Math.cos(angle);
+    for (const speed of [41, 150, 600]) {
+      const body = Object.freeze({ x: 100 + nx * 10, y: 100 + ny * 10, vx: -nx * speed, vy: -ny * speed });
+      const result = collideBody(body, 10, pad, 2, 1 / 120);
+      assert.equal(result.kick, true);
+      assert.equal(result.impact, true);
+      assert.ok(Math.abs(result.vx * nx + result.vy * ny - Math.max(300, speed)) < 1e-8);
+      assert.deepEqual(result, collideBody(body, 10, pad, 2, 1 / 120));
+      assert.ok(Math.abs(capsuleDistance(result.x, result.y, getPose(pad, 2)) - 15) < 1e-8);
+    }
+  }
+  const pad = create({ kind: 'pad', x: 100, y: 100, restitution: 1.2 });
+  for (const speed of [0, 10, 40]) {
+    const result = collideBody({ x: 100, y: 86, vx: 0, vy: speed }, 10, pad, 0, 1 / 120);
+    assert.equal(result.kick, false);
+    assert.equal(result.impact, false);
+    assert.ok(Math.hypot(result.vx, result.vy) <= speed);
+  }
+  let body = { x: 100, y: 85, vx: 0, vy: 0 };
+  for (let step = 0; step < 1200; step++) {
+    const vy = body.vy + 1000 / 120;
+    body = { ...body, vy, y: body.y + vy / 120 };
+    body = collideBody(body, 10, pad, step / 120, 1 / 120) || body;
+    assert.ok(body.y >= 85 - 1e-9, 'resting ball never climbs above its starting height');
+    assert.ok(Math.abs(body.vy) < 10);
+  }
+});
+
+test('a ball hopping on a flat pad never gains height', () => {
+  const { create, collideBody } = loadObstacles();
+  for (const restitution of [1, 1.2]) {
+    const pad = create({ kind: 'pad', x: 0, y: 0, length: 56, angle: 0, restitution });
+    let body = { x: 0, y: -60, vx: 0, vy: 0 };
+    let top = 0;
+    const peaks = [];
+    for (let step = 0; step < 120 * 8; step++) {
+      body = { ...body, vy: body.vy + 1420 / 120 };
+      body = { ...body, y: body.y + body.vy / 120 };
+      top = Math.min(top, body.y);
+      const contact = collideBody(body, 12.95, pad, step / 120, 1 / 120);
+      if (contact && contact.impact) { peaks.push(-top); top = 0; }
+      if (contact) body = { ...body, x: contact.x, y: contact.y, vx: contact.vx, vy: contact.vy };
+    }
+    assert.ok(peaks.length > 3, 'it keeps hopping');
+    for (let i = 1; i < peaks.length; i++) assert.ok(peaks[i] <= peaks[0] + 1, `hop ${i} (${peaks[i].toFixed(1)}) no higher than the first (${peaks[0].toFixed(1)})`);
+  }
+});
+
+test('blinker cycle boundaries, phase offsets and solidity are deterministic', () => {
+  const { create, getPose, isSolid, collideBody, getBounds, sweptClearance } = loadObstacles();
+  for (const phase of [0, 0.25, -0.25]) {
+    const blink = create({ kind: 'blinker', x: 0, y: 0, period: 2, onShare: 0.5, phase });
+    for (const [elapsed, solid, charge] of [[-2, true, 0], [-1, false, 0], [-0.5, false, 0.5], [0, true, 0], [0.5, true, 0.5], [1, false, 0], [1.5, false, 0.5], [2, true, 0]]) {
+      const time = elapsed - phase;
+      assert.equal(isSolid(blink, time), solid);
+      assert.equal(getPose(blink, time).solid, solid);
+      assert.equal(getPose(blink, time).charge, charge);
+    }
+    assert.equal(isSolid(blink, 1 - phase - 1e-9), true);
+    assert.equal(isSolid(blink, 2 - phase - 1e-9), false);
+    const body = Object.freeze({ x: 0, y: 10, vx: 15, vy: -200 });
+    const bar = create({ kind: 'bar', x: 0, y: 0 });
+    assert.equal(collideBody(body, 10, blink, 1.5 - phase, 1 / 120), null);
+    assert.deepEqual(collideBody(body, 10, blink, -phase, 1 / 120), collideBody(body, 10, bar, 0, 1 / 120));
+    assert.deepEqual(getBounds(blink), getBounds(bar));
+    assert.equal(sweptClearance(10, 20, blink), sweptClearance(10, 20, bar));
+  }
+  for (const kind of ['bar', 'peg', 'slider', 'spinner', 'pad']) {
+    const obstacle = create({ kind, x: 0, y: 0 });
+    assert.equal(isSolid(obstacle, 123), true);
+    assert.equal(getPose(obstacle, 123).solid, true);
+    assert.equal(getPose(obstacle, 123).charge, 0);
+  }
+  for (const onShare of [0.3, 0.7]) {
+    const obstacle = create({ kind: 'blinker', x: 0, y: 0, period: 4, onShare });
+    const boundary = 4 * onShare;
+    assert.equal(isSolid(obstacle, boundary - 1e-9), true);
+    assert.equal(isSolid(obstacle, boundary), false);
+    assert.equal(getPose(obstacle, boundary).charge, 0);
+    assert.equal(isSolid(obstacle, 4), true);
+    assert.equal(getPose(obstacle, 4).charge, 0);
+  }
+});
+
+test('new art preserves canvas state in both themes and telegraphs phase and squash', () => {
+  const { create, draw } = loadObstacles();
+  const palette = { ink: '#201e30', body: '#657085', shade: '#364050', light: '#bacadd', accent: '#ed5577', rail: 'rgba(80,90,100,0.4)' };
+  const render = (kind, time, squash, darkBackground, flash = 0) => {
+    const ctx = createRecordingContext(0.6);
+    draw(ctx, create({ kind, x: 20, y: 30 }), time, palette, { alpha: 0.5, squash, darkBackground, flash });
+    assert.equal(ctx.__depth, 0);
+    assert.equal(ctx.globalAlpha, 0.6);
+    assert.deepEqual(ctx.lineDash, []);
+    assert.deepEqual(ctx.__forbidden, []);
+    assert.ok(ctx.__alphaWrites.every((value) => value <= 0.3));
+    return ctx;
+  };
+  for (const dark of [false, true]) {
+    const ghost = render('blinker', 1.3, 0, dark);
+    assert.equal(ghost.__calls.some(([name]) => name === 'fill'), false, 'ghost is outline only');
+    assert.notDeepEqual(ghost.__alphaWrites, render('blinker', 2.3, 0, dark).__alphaWrites, 'off-phase telegraphs switch');
+    assert.notDeepEqual(render('blinker', 0, 0, dark).__calls, render('blinker', 1.1, 0, dark).__calls, 'solid surface drains');
+    assert.notDeepEqual(render('pad', 0, 0, dark).__calls, render('pad', 0, 1, dark).__calls, 'band visibly dips');
+    for (const kind of ['bar', 'peg', 'slider', 'spinner', 'pad', 'blinker']) {
+      assert.notDeepEqual(render(kind, 0, 0, dark).__calls, render(kind, 0, 0, dark, 1).__calls, `${kind} flashes`);
     }
   }
 });

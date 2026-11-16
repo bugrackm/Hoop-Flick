@@ -41,7 +41,9 @@ function climb(g, { transitions = 140, pointsPerBasket = 2 } = {}) {
         hoop.moving ? (hoop.movementType === 'vertical' ? 'lift' : hoop.movementType === 'orbit' ? 'orbit' : 'slide') : null,
         hoop.turnType || (Math.abs(hoop.baseRotation) > 0.001 ? 'tilt' : null),
         hoop.obstacle ? hoop.obstacle.kind : null,
-        hoop.board ? 'board' : null
+        hoop.board ? 'board' : null,
+        hoop.narrow ? 'narrow' : null,
+        hoop.fogReveal > 0 ? 'fog' : null
       ].filter(Boolean);
       records.push({
         score: s, id: hoop.id, intro: hoop.intro, features, previousBreather,
@@ -132,7 +134,7 @@ test('every featured hoop is reachable and every obstacle placement is fair', ()
       assert.ok(record.reachable, `hoop ${record.id} (${record.features}) at ${record.score} is reachable`);
       assert.ok(record.obstacleFair, `obstacle on hoop ${record.id} at ${record.score} is fair`);
     }
-    assert.ok(records.some(record => ['bar', 'peg', 'slider', 'spinner'].some(kind => record.features.includes(kind))), 'obstacles appear');
+    assert.ok(records.some(record => ['bar', 'peg', 'pad', 'slider', 'blinker', 'spinner'].some(kind => record.features.includes(kind))), 'obstacles appear');
   }
 });
 
