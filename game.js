@@ -203,14 +203,14 @@
   // Launcher: while aiming, the hoop holding the ball turns its mouth toward the shot (any
   // direction), pivoting around the ball. The turn is drawn only; the physics hoop stays put and
   // the launch-net walls/catch use the aim frame captured at release, so preview == flight.
-  // Two springs: while aiming the launcher follows the finger critically damped (no overshoot, no
-  // wobble: playtest 2026-11-07 "kayıyor, kontrolsüz" with the old bouncy spring); after a release
-  // and when it rights itself it uses the bouncy one, which reads as a slingshot snap.
+  // While aiming the launcher points straight at the aim, with no spring: any spring leaves a tail
+  // after the finger stops, which reads as the hoop sliding. After a release and when it rights
+  // itself it uses the bouncy spring, which reads as a slingshot snap.
   const LAUNCHER_SPRING = Object.freeze({ stiffness: 340, damping: 17, maxStep: 1 / 240 });
-  const LAUNCHER_AIM_SPRING = Object.freeze({ stiffness: 1156, damping: 68, maxStep: 1 / 240 });
   // The launcher only turns for a pull that would really shoot, so a touch or the first pixels of a
   // drag (whose direction is mostly finger noise) don't swing it around.
   const LAUNCHER_MIN_AIM_PULL = MIN_SHOT_PULL;
+  const LAUNCHER_AIM_RAMP_PULL = MIN_SHOT_PULL / 2;
   const LAUNCHER_POUCH_PULLBACK = 7;
   const LAUNCHER_POUCH_STRETCH = 10;
   const HOOP_CATCH_BOB = Object.freeze({ duration: 0.42, depth: 5 });
@@ -3345,12 +3345,13 @@
     return isReachableTransition(source, target);
   }
 
-  function screenToWorld(clientX, clientY) {
+  // The drag is kept in screen pixels on the canvas, never in world space: the camera may still be
+  // easing after a basket while the player aims, and its motion must not pull the shot.
+  function getDragPoint(event) {
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: (clientX - rect.left - offsetX) / scale,
-      y: (clientY - rect.top - offsetY) / scale + cameraY
-    };
+    const x = event.clientX - rect.left - offsetX;
+    const y = event.clientY - rect.top - offsetY;
+    return { x, y };
   }
 
   function clearPointerDrag(pointerId) {
@@ -3366,7 +3367,7 @@
     ensureAudio();
     const settleCanBeSkipped = ball.settle && ball.settle.elapsed >= BALL_SETTLE_INPUT_DELAY;
     if (!ball.held && !settleCanBeSkipped) return;
-    const p = screenToWorld(event.clientX, event.clientY);
+    const p = getDragPoint(event);
     if (settleCanBeSkipped) finishBallSettle();
     event.preventDefault();
     activePointer = event.pointerId;
@@ -3382,7 +3383,7 @@
   function onPointerMove(event) {
     if (event.pointerId !== activePointer || !drag) return;
     event.preventDefault();
-    const p = screenToWorld(event.clientX, event.clientY);
+    const p = getDragPoint(event);
     drag.pointerCurrentX = p.x;
     drag.pointerCurrentY = p.y;
   }
@@ -3438,10 +3439,12 @@
     clearPointerDrag(event.pointerId);
   }
 
+  // The one pull source for the preview, the launcher and the release: the drag in screen pixels,
+  // converted to world units by the canvas scale.
   function getPullVector() {
     if (!drag) return { x: 0, y: 0, len: 0, ratio: 0, power: 0 };
-    const rawX = drag.pointerStartX - drag.pointerCurrentX;
-    const rawY = drag.pointerStartY - drag.pointerCurrentY;
+    const rawX = (drag.pointerStartX - drag.pointerCurrentX) / scale;
+    const rawY = (drag.pointerStartY - drag.pointerCurrentY) / scale;
     const len = Math.min(Math.hypot(rawX, rawY), MAX_PULL);
     const angle = Math.atan2(rawY, rawX);
     const ratio = len / MAX_PULL;
@@ -5751,19 +5754,34 @@
     return normalizeAngle(getAimRotation(getLauncherPull()) - hoop.rotation);
   }
 
-  // Drawn-only spring: the launcher swings toward the aim, and after a release it snaps back
-  // upright with a small overshoot. Substepped so a long frame cannot blow it up.
+  // How far the launcher turns toward the aim for this pull length: it eases in over half a
+  // MIN_SHOT_PULL past the aim threshold, so crossing the threshold never snaps it sideways, yet a
+  // weak shot is (almost) fully turned at release. A function of the pull only (no time), so a
+  // still finger still means a still launcher.
+  function getLauncherAimRamp(len) {
+    const t = clamp((len - LAUNCHER_MIN_AIM_PULL) / LAUNCHER_AIM_RAMP_PULL, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  // Drawn-only: while aiming the launcher points straight at the aim; after a release (or when the
+  // pull drops too short) a spring snaps it back upright with a small overshoot. Substepped so a
+  // long frame cannot blow it up.
   function updateLauncherSpring(hoop, dt) {
     const target = getLauncherAimTarget(hoop);
+    const aiming = isLauncherAiming(hoop);
+    if (aiming) {
+      hoop.aimAngle = target * getLauncherAimRamp(getLauncherPull().len);
+      hoop.aimVelocity = 0;
+      return;
+    }
     let angle = hoop.aimAngle || 0;
     let velocity = hoop.aimVelocity || 0;
     if (!angle && !velocity && !target) return;
-    const spring = isLauncherAiming(hoop) ? LAUNCHER_AIM_SPRING : LAUNCHER_SPRING;
-    const steps = Math.max(1, Math.ceil(dt / spring.maxStep));
+    const steps = Math.max(1, Math.ceil(dt / LAUNCHER_SPRING.maxStep));
     const h = dt / steps;
     for (let i = 0; i < steps; i += 1) {
       const error = normalizeAngle(target - angle);
-      velocity += (error * spring.stiffness - velocity * spring.damping) * h;
+      velocity += (error * LAUNCHER_SPRING.stiffness - velocity * LAUNCHER_SPRING.damping) * h;
       angle += velocity * h;
     }
     angle = normalizeAngle(angle);

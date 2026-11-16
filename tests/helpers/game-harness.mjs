@@ -30,7 +30,7 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
     getContext: () => context,
     classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
     style: { setProperty: noop }, setAttribute: noop, removeAttribute: noop,
-    hasPointerCapture: () => false, releasePointerCapture: noop,
+    hasPointerCapture: () => false, setPointerCapture: noop, releasePointerCapture: noop,
     focus: noop, blur: noop, querySelector: () => null, querySelectorAll: () => [],
     append: noop, appendChild: noop, replaceChildren: noop, addEventListener: noop,
     dataset: {},
