@@ -113,6 +113,7 @@
   const BALL_SKIN_KEY = "hoop-flick-ball-skin";
   const THEME_KEY = "hoop-flick-theme";
   const LOCAL_SAVE_KEY = "hoop-flick-save-v4";
+  const SAVE_BACKUP_KEY = "hoop-flick-save-backup";
   const SAVE_VERSION = 6;
   const ECONOMY_SAVE_VERSION = 4;
   const STATS_SAVE_VERSION = 5;
@@ -1373,6 +1374,11 @@
   const ballSkinImages = Object.create(null);
   const TRANSLATIONS = {
     tr: {
+      saveNotice: "Kayıt bilgisi",
+      saveRecovered: "Kayıt okunamadı; yedeklendi ve yeni kayıt başlatıldı.",
+      saveFutureRecovered: "Kayıt daha yeni bir sürümden; yedeklendi ve uyumlu ilerleme yüklendi.",
+      saveRecoveryFailed: "Kayıt okunamadı; yedekleme yapılamadı ve yeni kayıt başlatıldı.",
+      saveFutureRecoveryFailed: "Kayıt daha yeni bir sürümden; yedeklenemedi, uyumlu ilerleme yüklendi.",
       arcadeEyebrow: "ARCADE BASKETBOL",
       tagline: "Çek, bırak ve yükselmeye devam et.",
       ballsTab: "Toplar",
@@ -1582,6 +1588,11 @@
       newHighScore: "YENİ REKOR!"
     },
     en: {
+      saveNotice: "Save notice",
+      saveRecovered: "Your save couldn't be read; it was backed up and a fresh save started.",
+      saveFutureRecovered: "Your save is from a newer version; it was backed up and compatible progress loaded.",
+      saveRecoveryFailed: "Your save couldn't be read or backed up; a fresh save started.",
+      saveFutureRecoveryFailed: "Your save is from a newer version; backup failed, but compatible progress loaded.",
       arcadeEyebrow: "ARCADE BASKETBALL",
       tagline: "Drag, release, and keep climbing.",
       ballsTab: "Balls",
@@ -7654,21 +7665,36 @@
     ballEffects.selectedPreset = BALL_SKINS[selectedBallSkinId].effectPreset;
   }
 
+  function backUpUnreadableSave(raw, reason) {
+    try {
+      // Keep only the newest unreadable record, replacing any previous backup.
+      localStorage.setItem(SAVE_BACKUP_KEY, JSON.stringify({ at: new Date().toISOString(), reason, raw }));
+      return reason === "corrupt" ? "saveRecovered" : "saveFutureRecovered";
+    } catch (error) {
+      return reason === "corrupt" ? "saveRecoveryFailed" : "saveFutureRecoveryFailed";
+    }
+  }
+
   function readLocalSaveRecord() {
     let rawData = null;
     let parsed = null;
     let invalidUnifiedSave = false;
     try {
       rawData = localStorage.getItem(LOCAL_SAVE_KEY);
-      if (rawData && rawData.trim()) {
+      if (rawData !== null) {
         const candidate = JSON.parse(rawData);
         if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) parsed = candidate;
         else invalidUnifiedSave = true;
       }
     } catch (error) {
-      invalidUnifiedSave = Boolean(rawData);
+      invalidUnifiedSave = rawData !== null;
     }
-    if (parsed) return { save: parsed, shouldPersist: false };
+    const recoveryMessage = invalidUnifiedSave
+      ? backUpUnreadableSave(rawData, "corrupt")
+      : parsed && parsed.version > SAVE_VERSION
+        ? backUpUnreadableSave(rawData, "future-version")
+        : null;
+    if (parsed) return { save: parsed, shouldPersist: false, recoveryMessage };
 
     let hasLegacyData = false;
     try {
@@ -7677,7 +7703,7 @@
     } catch (error) {
       hasLegacyData = false;
     }
-    if (!hasLegacyData) return { save: null, shouldPersist: invalidUnifiedSave };
+    if (!hasLegacyData) return { save: null, shouldPersist: invalidUnifiedSave, recoveryMessage };
     return {
       save: {
         version: 3,
@@ -7690,7 +7716,8 @@
           theme: readThemePreference()
         }
       },
-      shouldPersist: true
+      shouldPersist: true,
+      recoveryMessage
     };
   }
 
@@ -8027,6 +8054,7 @@
   }
 
   function getToastItem(entry) {
+    if (entry.kind === "saveRecovery") return { nameKey: entry.id };
     if (entry.kind === "ball") return BALL_SKINS[entry.id];
     if (entry.kind === "mission") return entry.mission;
     return ACHIEVEMENT_BY_ID[entry.id];
@@ -8037,7 +8065,7 @@
     if (!entry) return;
     const item = getToastItem(entry);
     if (!item) return;
-    const titleKey = entry.kind === "ball" ? "newBallUnlocked" : entry.kind === "mission" ? "missionComplete" : "achievementUnlocked";
+    const titleKey = entry.kind === "saveRecovery" ? "saveNotice" : entry.kind === "ball" ? "newBallUnlocked" : entry.kind === "mission" ? "missionComplete" : "achievementUnlocked";
     if (achievementToastTitle) achievementToastTitle.textContent = t(titleKey);
     achievementToastName.textContent = entry.kind === "mission" ? describeMission(item) : t(item.nameKey);
   }
@@ -8076,7 +8104,7 @@
         achievementToastMedal.replaceChildren(preview);
         drawBallPreviewCanvas(preview, item, { rotation: -0.35, time: 0, heat: 0, flash: 0 });
       } else {
-        achievementToastMedal.textContent = entry.kind === "mission" ? "✓" : "★";
+        achievementToastMedal.textContent = entry.kind === "mission" ? "✓" : entry.kind === "saveRecovery" ? "!" : "★";
       }
       achievementToastMedal.classList.toggle("missionMedal", entry.kind === "mission");
     }
@@ -8084,6 +8112,8 @@
     const inPlay = state === "playing";
     achievementToast.classList.toggle("atBottom", !inPlay);
     achievementToast.classList.toggle("compact", inPlay);
+    // A notice is a sentence, not a name: it wraps instead of being cut off with an ellipsis.
+    achievementToast.classList.toggle("notice", entry.kind === "saveRecovery");
     achievementToast.classList.add("active");
     achievementToastTimer = window.setTimeout(() => {
       achievementToast.classList.remove("active");
@@ -8091,7 +8121,13 @@
         achievementToastTimer = null;
         showNextAchievementToast();
       }, 220);
-    }, inPlay ? 1700 : 2400);
+    }, getAchievementToastDuration(entry.kind, inPlay));
+  }
+
+  // A notice is a full sentence the player has to read, so it stays up longer than a name.
+  function getAchievementToastDuration(kind, inPlay) {
+    if (kind === "saveRecovery") return 5000;
+    return inPlay ? 1700 : 2400;
   }
 
   function renderProfile() {
@@ -9069,6 +9105,10 @@
     initTutorial();
     persistenceReady = true;
     gameBooted = true;
+    if (localRecord.recoveryMessage) {
+      achievementToastQueue.push({ kind: "saveRecovery", id: localRecord.recoveryMessage });
+      showNextAchievementToast();
+    }
     const bootstrapChallengesChanged = evaluateBallChallenges(true);
     const bootstrapAchievementsChanged = evaluateAchievements({
       metrics: ["highScore", "ballCollection", "shopBallCollection", "themeCollection"],

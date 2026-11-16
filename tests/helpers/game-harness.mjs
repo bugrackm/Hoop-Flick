@@ -17,8 +17,9 @@ export function loadPhysics() {
 
 // Execute the real IIFE with inert DOM/audio, without boot or event registration.
 // The evaluation hook exists only in this test copy, never in the shipped game.
-export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' } = {}) {
+export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '', storage = new Map(), failStorageKey = null, now = null } = {}) {
   const calls = [];
+  const storageWrites = [];
   const noop = () => {};
   const context = new Proxy({}, {
     get: (_, key) => (...args) => {
@@ -40,15 +41,27 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
   const rafs = new Map();
   const sandbox = vm.createContext({
     performance, URLSearchParams, console,
+    ...(now === null ? {} : { Date: class extends Date {
+      constructor(...args) { super(...(args.length ? args : [now])); }
+      static now() { return now; }
+    } }),
     setTimeout: () => 0, clearTimeout: noop,
     window: {
       location: { search },
+      setInterval: () => 0,
       setTimeout: () => 0, clearTimeout: noop,
       requestAnimationFrame: fn => { rafs.set(++rafId, fn); return rafId; },
       cancelAnimationFrame: id => rafs.delete(id)
     },
-    document: { getElementById: element, createElement: element, createTextNode: text => ({ textContent: String(text) }), querySelector: () => null, querySelectorAll: () => [], body: element(), documentElement: element() },
-    localStorage: { getItem: () => null, setItem: noop }
+    document: { getElementById: element, createElement: element, createDocumentFragment: element, createTextNode: text => ({ textContent: String(text) }), querySelector: () => null, querySelectorAll: () => [], body: element(), documentElement: element() },
+    localStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => {
+        if (key === failStorageKey) throw new Error('Storage quota exceeded');
+        storageWrites.push({ key, value: String(value) });
+        storage.set(key, String(value));
+      }
+    }
   });
   vm.runInContext(physicsSource, sandbox);
   vm.runInContext(ballArtSource, sandbox);
@@ -58,5 +71,5 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '' 
   const cutoff = source.indexOf('  window.addEventListener("resize"');
   if (cutoff < 0) throw new Error('Cannot find game bootstrap boundary');
   vm.runInContext(source.slice(0, cutoff) + '\n globalThis.evaluateGame = code => eval(code);\n})();', sandbox);
-  return { evaluate: sandbox.evaluateGame, calls, rafs };
+  return { evaluate: sandbox.evaluateGame, calls, rafs, storageWrites };
 }

@@ -2056,6 +2056,13 @@ body.dark-mode .themeOption[aria-selected="true"] {
   white-space: nowrap;
 }
 
+/* A notice is a sentence: wrap it instead of cutting it off. */
+.achievementToast.notice #achievementToastName {
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .achievementToastMedal {
   display: grid;
   width: 40px;
