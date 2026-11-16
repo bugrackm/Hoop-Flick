@@ -17,7 +17,9 @@ export function loadPhysics() {
 
 // Execute the real IIFE with inert DOM/audio, without boot or event registration.
 // The evaluation hook exists only in this test copy, never in the shipped game.
-export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '', storage = new Map(), failStorageKey = null, now = null } = {}) {
+// Math.random is seeded (`randomSeed`) before any script runs, so the run seed the game picks
+// and every cosmetic roll repeat exactly: no test depends on unseeded randomness.
+export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '', storage = new Map(), failStorageKey = null, now = null, randomSeed = 0x2545f491 } = {}) {
   const calls = [];
   const storageWrites = [];
   const noop = () => {};
@@ -63,6 +65,10 @@ export function loadGame({ source = readFileSync(gamePath, 'utf8'), search = '',
       }
     }
   });
+  vm.runInContext(`(() => {
+    let seed = ${randomSeed >>> 0};
+    Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  })();`, sandbox);
   vm.runInContext(physicsSource, sandbox);
   vm.runInContext(ballArtSource, sandbox);
   vm.runInContext(hoopArtSource, sandbox);

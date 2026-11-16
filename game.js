@@ -1919,6 +1919,12 @@
     introFailures: new Map(),
     breather: 0
   };
+  // Gameplay randomness of the current run. Everything that decides what the player faces (hoop
+  // positions, movement, mechanics, obstacles) draws from `next`, which resetGame re-creates from
+  // the run's `seed`: the same seed plans the same hoops (daily challenge, tests). Cosmetics
+  // (sound, particles, shake) never draw from it, so they cannot change the hoop sequence.
+  const runRandom = { seed: 0, next: null };
+  seedRunRandom(createRunSeed());
   const highScoreCelebration = {
     eligibleThisRun: best > 0,
     hasCelebratedThisRun: false,
@@ -2070,7 +2076,19 @@
     return activeTimeChanged;
   }
 
-  function resetGame(toMenu) {
+  // The single place a normal run's seed is picked; a given seed (daily challenge, tests) skips it.
+  function createRunSeed() {
+    return Math.floor(Math.random() * 4294967296) >>> 0;
+  }
+
+  function seedRunRandom(seed) {
+    runRandom.seed = seed >>> 0;
+    runRandom.next = makeSeededRandom(runRandom.seed);
+  }
+
+  // `seed` replays a known run; without it every run gets a fresh one.
+  function resetGame(toMenu, seed) {
+    seedRunRandom(seed ?? createRunSeed());
     userPaused = false;
     clearTips();
     tutorial.guide = null;
@@ -2138,8 +2156,8 @@
     activePointer = null;
     drag = null;
     airborneTime = 0;
-    const startHoop = makeStartHoop();
-    const firstTarget = makeFirstTargetHoop(startHoop);
+    const startHoop = makeStartHoop(runRandom.next);
+    const firstTarget = makeFirstTargetHoop(startHoop, runRandom.next);
     hoops = [startHoop, firstTarget];
     lastHoopSide = firstTarget.x >= startHoop.x ? 1 : -1;
     currentHoopId = hoops[0].id;
@@ -2163,20 +2181,21 @@
     syncUiState();
   }
 
-  function makeStartHoop() {
-    const startOnLeft = Math.random() < 0.5;
-    const x = startOnLeft ? random(128, 154) : random(WORLD_W - 154, WORLD_W - 128);
-    return makeHoop(x, WORLD_H - START_HOOP_BOTTOM_OFFSET, 0, null);
+  function makeStartHoop(rng) {
+    const startOnLeft = rng() < 0.5;
+    const x = startOnLeft ? rngRange(rng, 128, 154) : rngRange(rng, WORLD_W - 154, WORLD_W - 128);
+    return makeHoop(x, WORLD_H - START_HOOP_BOTTOM_OFFSET, 0, null, null, rng);
   }
 
-  function makeFirstTargetHoop(startHoop) {
+  function makeFirstTargetHoop(startHoop, rng) {
     const startOnLeft = startHoop.x < WORLD_W * 0.5;
-    const x = startOnLeft ? random(252, 292) : random(128, 168);
-    const y = startHoop.y - random(174, 192);
-    return makeHoop(x, y, 1, startHoop);
+    const x = startOnLeft ? rngRange(rng, 252, 292) : rngRange(rng, 128, 168);
+    const y = startHoop.y - rngRange(rng, 174, 192);
+    return makeHoop(x, y, 1, startHoop, null, rng);
   }
 
-  function makeHoop(x, y, id, sourceHoop, transitionPlan) {
+  // `rng` picks the movement and turn phases; the planner always passes the run's, test fixtures may omit it.
+  function makeHoop(x, y, id, sourceHoop, transitionPlan, rng = runRandom.next) {
     const features = transitionPlan?.features || NO_FEATURES;
     const params = transitionPlan?.params || {};
     const motion = features.motion;
@@ -2206,13 +2225,13 @@
       movementType: motion === "lift" ? "vertical" : motion === "orbit" ? "orbit" : "horizontal",
       moveAmplitude: motion ? getFittedMoveAmplitude(motion, x, motionParams.amplitude ?? motionParams.radius ?? 0) : 0,
       moveSpeed: motion ? motionParams.speed : 1.8,
-      movePhase: Math.random() * Math.PI * 2,
+      movePhase: rng() * Math.PI * 2,
       // swing: rotation = baseRotation + sin(t·speed + phase)·amplitude; spin: baseRotation + direction·speed·t.
       turnType: turn === "swing" || turn === "spin" ? turn : null,
       turnAmplitude: turn === "swing" ? (turnParams.degrees || 0) * (Math.PI / 180) : 0,
       turnSpeed: turn === "swing" || turn === "spin" ? turnParams.speed || 0 : 0,
-      turnPhase: Math.random() * Math.PI * 2,
-      turnDirection: Math.random() < 0.5 ? -1 : 1,
+      turnPhase: rng() * Math.PI * 2,
+      turnDirection: rng() < 0.5 ? -1 : 1,
       baseRotation: 0,
       rotation: 0,
       obstacle: null,
@@ -2305,10 +2324,11 @@
   }
 
   // `automatic` = the first launch opens straight into the lesson, before any tap unlocks audio.
-  function startGame(automatic) {
+  // `seed` starts a known run (e.g. a future daily challenge); omitted = a fresh random run.
+  function startGame(automatic, seed) {
     if (!gameBooted) return;
     if (!automatic) ensureAudio();
-    resetGame(false);
+    resetGame(false, seed);
     if (!automatic) playGameSound("start");
     tutorial.basketsThisRun = 0;
     if (!isLessonDone()) beginLesson();
@@ -2453,7 +2473,7 @@
     return { ...Progression.getDifficultyTier(scoreValue), tutorial: false };
   }
 
-  function chooseTransitionDifficulty(tier) {
+  function chooseTransitionDifficulty(tier, rng) {
     if (tier.tutorial || tier.maxBudget === 0) return "easy";
     const weights = { ...tier.weights };
     if (
@@ -2464,7 +2484,7 @@
     }
     const total = weights.easy + weights.medium + weights.hard;
     if (total <= 0) return "easy";
-    const roll = Math.random() * total;
+    const roll = rng() * total;
     if (roll < weights.easy) return "easy";
     if (roll < weights.easy + weights.medium) return "medium";
     return "hard";
@@ -2489,18 +2509,18 @@
     return direction > 0 ? maxX - source.x : source.x - minX;
   }
 
-  function chooseWideGeometry(availableHorizontalGap) {
+  function chooseWideGeometry(availableHorizontalGap, rng) {
     const choices = [];
     if (availableHorizontalGap >= SPAWN_GAP_PROFILES.wideHorizontal.minX) choices.push("wideHorizontal");
     if (availableHorizontalGap >= SPAWN_GAP_PROFILES.wideVertical.minX) choices.push("wideVertical");
     if (availableHorizontalGap >= SPAWN_GAP_PROFILES.wideBalanced.minX) choices.push("wideBalanced");
     if (!choices.length) return null;
-    return choices[Math.floor(Math.random() * choices.length)];
+    return choices[Math.floor(rng() * choices.length)];
   }
 
-  function chooseNormalGeometry() {
+  function chooseNormalGeometry(rng) {
     const nearOffCooldown = MAX_CONSECUTIVE_NEAR_TRANSITIONS > 0 && !transitionHistory.lastWasNear;
-    return nearOffCooldown && Math.random() < NORMAL_NEAR_MAX_SHARE ? "normalNear" : "normalFar";
+    return nearOffCooldown && rng() < NORMAL_NEAR_MAX_SHARE ? "normalNear" : "normalFar";
   }
 
   // The first intro mechanic this run has unlocked but not shown yet (one intro at a time).
@@ -2522,10 +2542,10 @@
     return null;
   }
 
-  function pickWeighted(entries) {
+  function pickWeighted(entries, rng) {
     const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
     if (total <= 0) return null;
-    let roll = Math.random() * total;
+    let roll = rng() * total;
     for (const entry of entries) {
       roll -= entry.weight;
       if (roll < 0) return entry.mechanic;
@@ -2564,14 +2584,14 @@
   }
 
   // Weighted by the ladder: the newest mechanic is in the spotlight for a while after its unlock.
-  function chooseTargetFeatures(geometryName, remainingBudget) {
+  function chooseTargetFeatures(geometryName, remainingBudget, rng) {
     const features = { ...NO_FEATURES };
     if (remainingBudget < CHALLENGE_COST || geometryName === "longShot" || geometryName === "edge") return features;
     if (geometryName === "wideVertical" || geometryName === "wideBalanced") return features;
     const candidates = Progression.getUnlockedMechanics(score)
       .filter((mechanic) => canAddFeature(features, mechanic, geometryName))
       .map((mechanic) => ({ mechanic, weight: Progression.getMechanicWeight(mechanic, score) }));
-    const first = pickWeighted(candidates);
+    const first = pickWeighted(candidates, rng);
     if (!first) return features;
     addFeature(features, first);
     // Two features only on a hard transition high on the ladder, and only in approved pairs.
@@ -2579,20 +2599,20 @@
       const partners = Progression.getUnlockedMechanics(score)
         .filter((mechanic) => Progression.canCombine(first, mechanic) && canAddFeature(features, mechanic, geometryName))
         .map((mechanic) => ({ mechanic, weight: Progression.getMechanicWeight(mechanic, score) }));
-      const second = pickWeighted(partners);
+      const second = pickWeighted(partners, rng);
       if (second) addFeature(features, second);
     }
     return features;
   }
 
-  function buildFeatureParams(features, intro, hard) {
+  function buildFeatureParams(features, intro, hard, rng) {
     const params = {};
     const list = getFeatureList(features);
     for (const mechanic of list) {
       const boosted = hard && list.length === 1 && !intro;
       // A lone feature on a hard transition plays like a later stage.
       const scoreForParams = boosted ? score + Progression.RAMP_SCORE * HARD_INTENSITY_BONUS : score;
-      params[mechanic] = Progression.getMechanicParams(mechanic, scoreForParams, Math.random, intro === mechanic);
+      params[mechanic] = Progression.getMechanicParams(mechanic, scoreForParams, rng, intro === mechanic);
     }
     return params;
   }
@@ -2606,7 +2626,7 @@
     return (Number(plan.wide) + Number(plan.edge) + Number(plan.longShot) + getFeatureList(plan.features).length) * CHALLENGE_COST;
   }
 
-  function createTransitionPlan(source, targetId, options) {
+  function createTransitionPlan(source, targetId, rng, options) {
     const tier = getDifficultyTier(score, targetId);
     const direction = getSpawnDirection(source);
     const availableHorizontalGap = getAvailableHorizontalGap(source, direction);
@@ -2630,22 +2650,22 @@
         longShot: false,
         fallback: false,
         features,
-        params: buildFeatureParams(features, intro, false),
+        params: buildFeatureParams(features, intro, false, rng),
         intro
       };
       plan.budget = getTransitionBudgetCost(plan);
       return plan;
     }
 
-    const difficulty = transitionHistory.breather > 0 ? "easy" : chooseTransitionDifficulty(tier);
+    const difficulty = transitionHistory.breather > 0 ? "easy" : chooseTransitionDifficulty(tier, rng);
     const budgetLimit = difficulty === "easy" ? 0 : difficulty === "medium" ? Math.min(tier.maxBudget, CHALLENGE_COST) : tier.maxBudget;
-    let geometryName = tier.tutorial ? "tutorial" : chooseNormalGeometry();
+    let geometryName = tier.tutorial ? "tutorial" : chooseNormalGeometry(rng);
     let longShot = false;
     let wide = false;
     let edge = false;
     // Higher on the ladder the budget goes to mechanics first; the old geometry variety
     // (wide, edge and long gaps) keeps the rest, so early play feels like before.
-    const featureFirst = !tier.tutorial && budgetLimit >= CHALLENGE_COST && Math.random() < getFeatureFirstChance();
+    const featureFirst = !tier.tutorial && budgetLimit >= CHALLENGE_COST && rng() < getFeatureFirstChance();
 
     if (
       !tier.tutorial
@@ -2654,7 +2674,7 @@
       && score >= EDGE_TRANSITION_UNLOCK_SCORE
       && budgetLimit >= CHALLENGE_COST
       && (EDGE_TRANSITION_COOLDOWN <= 0 || !transitionHistory.lastWasEdge)
-      && Math.random() < getVarietyChance(EDGE_TRANSITION_BASE_CHANCE, EDGE_TRANSITION_MAX_CHANCE, EDGE_TRANSITION_UNLOCK_SCORE)
+      && rng() < getVarietyChance(EDGE_TRANSITION_BASE_CHANCE, EDGE_TRANSITION_MAX_CHANCE, EDGE_TRANSITION_UNLOCK_SCORE)
     ) {
       geometryName = "edge";
       edge = true;
@@ -2667,7 +2687,7 @@
         score >= LONG_SHOT_UNLOCK_SCORE
         && longShotAvailable
         && longShotOffCooldown
-        && Math.random() < getVarietyChance(LONG_SHOT_BASE_CHANCE, LONG_SHOT_MAX_CHANCE, LONG_SHOT_UNLOCK_SCORE)
+        && rng() < getVarietyChance(LONG_SHOT_BASE_CHANCE, LONG_SHOT_MAX_CHANCE, LONG_SHOT_UNLOCK_SCORE)
       ) {
         geometryName = "longShot";
         longShot = true;
@@ -2675,8 +2695,8 @@
     }
 
     if (!edge && !longShot && !featureFirst && !tier.tutorial && budgetLimit >= CHALLENGE_COST && score >= WIDE_GAP_UNLOCK_SCORE) {
-      if (Math.random() < getVarietyChance(WIDE_GAP_BASE_CHANCE, WIDE_GAP_MAX_CHANCE, WIDE_GAP_UNLOCK_SCORE)) {
-        const wideGeometry = chooseWideGeometry(availableHorizontalGap);
+      if (rng() < getVarietyChance(WIDE_GAP_BASE_CHANCE, WIDE_GAP_MAX_CHANCE, WIDE_GAP_UNLOCK_SCORE)) {
+        const wideGeometry = chooseWideGeometry(availableHorizontalGap, rng);
         if (wideGeometry) {
           geometryName = wideGeometry;
           wide = true;
@@ -2685,7 +2705,7 @@
     }
 
     const geometryCost = (Number(wide) + Number(edge) + Number(longShot)) * CHALLENGE_COST;
-    const features = tier.tutorial ? { ...NO_FEATURES } : chooseTargetFeatures(geometryName, budgetLimit - geometryCost);
+    const features = tier.tutorial ? { ...NO_FEATURES } : chooseTargetFeatures(geometryName, budgetLimit - geometryCost, rng);
     const plan = {
       tier: tier.name,
       difficulty,
@@ -2699,7 +2719,7 @@
       longShot,
       fallback: false,
       features,
-      params: buildFeatureParams(features, null, difficulty === "hard"),
+      params: buildFeatureParams(features, null, difficulty === "hard", rng),
       intro: null
     };
     plan.budget = getTransitionBudgetCost(plan);
@@ -2725,15 +2745,15 @@
     };
   }
 
-  function sampleHoopCandidate(source, targetId, plan) {
+  function sampleHoopCandidate(source, targetId, plan, rng) {
     if (plan.edge) {
       const edgeCenterInset = WALL_INSET + HOOP_WIDTH * 0.5 + RIM_RADIUS + EDGE_HOOP_WALL_GAP;
-      const inwardJitter = random(0, EDGE_HOOP_INWARD_JITTER);
+      const inwardJitter = rngRange(rng, 0, EDGE_HOOP_INWARD_JITTER);
       const x = plan.direction > 0
         ? WORLD_W - edgeCenterInset - inwardJitter
         : edgeCenterInset + inwardJitter;
-      const yLift = random(plan.profile.minY, plan.profile.maxY);
-      return makeHoop(x, source.y - yLift, targetId, source, plan);
+      const yLift = rngRange(rng, plan.profile.minY, plan.profile.maxY);
+      return makeHoop(x, source.y - yLift, targetId, source, plan, rng);
     }
     // A slide or orbit needs room for its swing: keep its centre that far from the clearance line.
     const motion = plan.features.motion;
@@ -2742,12 +2762,12 @@
       : 0;
     const minX = WALL_INSET + HOOP_WALL_CLEARANCE + swing;
     const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE - swing;
-    const xDrift = random(plan.profile.minX, plan.profile.maxX);
+    const xDrift = rngRange(rng, plan.profile.minX, plan.profile.maxX);
     // Hoops with a feature keep the shorter challenged gap (isFairSpawn rejects anything taller).
     const challenged = getFeatureList(plan.features).length > 0;
-    const yLift = random(plan.profile.minY, challenged ? Math.min(plan.profile.maxY, CHALLENGED_MAX_VERTICAL_GAP) : plan.profile.maxY);
+    const yLift = rngRange(rng, plan.profile.minY, challenged ? Math.min(plan.profile.maxY, CHALLENGED_MAX_VERTICAL_GAP) : plan.profile.maxY);
     const x = clamp(source.x + plan.direction * xDrift, minX, maxX);
-    return makeHoop(x, source.y - yLift, targetId, source, plan);
+    return makeHoop(x, source.y - yLift, targetId, source, plan, rng);
   }
 
   // Poses the target must be reachable in. Moving hoops: centre and both ends (orbit: four points),
@@ -2970,18 +2990,18 @@
     return 0;
   }
 
-  function buildObstacleSpec(kind, x, y, params) {
-    if (kind === "bar") return { kind, x, y, length: params.length, angle: random(-0.6, 0.6) };
+  function buildObstacleSpec(kind, x, y, params, rng) {
+    if (kind === "bar") return { kind, x, y, length: params.length, angle: rngRange(rng, -0.6, 0.6) };
     if (kind === "peg") return { kind, x, y, radius: params.radius };
-    if (kind === "pad") return { kind, x, y, length: params.length, angle: random(-0.75, 0.75) };
+    if (kind === "pad") return { kind, x, y, length: params.length, angle: rngRange(rng, -0.75, 0.75) };
     if (kind === "blinker") {
       const period = params.period || 2.4;
-      return { kind, x, y, length: params.length, angle: random(-0.5, 0.5), period, onShare: params.onShare || 0.5, phase: random(0, period) };
+      return { kind, x, y, length: params.length, angle: rngRange(rng, -0.5, 0.5), period, onShare: params.onShare || 0.5, phase: rngRange(rng, 0, period) };
     }
     if (kind === "slider") {
-      return { kind, x, y, length: params.length, angle: 0, axisAngle: random(-0.18, 0.18), amplitude: params.amplitude, speed: params.speed, phase: random(0, Math.PI * 2) };
+      return { kind, x, y, length: params.length, angle: 0, axisAngle: rngRange(rng, -0.18, 0.18), amplitude: params.amplitude, speed: params.speed, phase: rngRange(rng, 0, Math.PI * 2) };
     }
-    return { kind: "spinner", x, y, length: params.length, angle: random(0, Math.PI), speed: params.speed * (Math.random() < 0.5 ? -1 : 1) };
+    return { kind: "spinner", x, y, length: params.length, angle: rngRange(rng, 0, Math.PI), speed: params.speed * (rng() < 0.5 ? -1 : 1) };
   }
 
   function poseToWorld(pose, localX, localY) {
@@ -3043,7 +3063,7 @@
     return true;
   }
 
-  function placeObstacle(source, target, plan) {
+  function placeObstacle(source, target, plan, rng) {
     if (!Obstacles) return null;
     const kind = plan.features.obstacle;
     const params = plan.params[kind] || {};
@@ -3075,32 +3095,32 @@
       let x;
       let y;
       if (moving) {
-        shot = shots[Math.floor(Math.random() * Math.max(1, Math.ceil(shots.length * 0.6)))];
-        const height = gapBottom + (gapTop - gapBottom) * random(0.35, 0.75);
+        shot = shots[Math.floor(rng() * Math.max(1, Math.ceil(shots.length * 0.6)))];
+        const height = gapBottom + (gapTop - gapBottom) * rngRange(rng, 0.35, 0.75);
         while (k < shot.steps - 1 && getShotPoint(shot, k).y > height) k += 1;
         const point = getShotPoint(shot, k);
         const next = getShotPoint(shot, Math.min(shot.steps - 1, k + 1));
         const heading = Math.atan2(next.y - point.y, next.x - point.x);
-        const side = Math.random() < 0.5 ? -1 : 1;
+        const side = rng() < 0.5 ? -1 : 1;
         // A slider's travel covers the shots off its centre, so a gap opens each pass; a spinner's
         // hub sits beside the shots and only its blade sweeps across them.
         // A blinker sits right on the bundle: while it is solid the direct shots are closed.
         const offset = kind === "slider"
-          ? (params.amplitude || 40) * random(0.45, 0.8)
+          ? (params.amplitude || 40) * rngRange(rng, 0.45, 0.8)
           : kind === "blinker"
-            ? random(0, 8)
-            : (params.length || 60) * 0.5 * random(0.5, 0.75);
+            ? rngRange(rng, 0, 8)
+            : (params.length || 60) * 0.5 * rngRange(rng, 0.5, 0.75);
         const offsetAngle = kind === "slider" ? 0 : heading + Math.PI * 0.5;
         x = point.x + Math.cos(offsetAngle) * offset * side;
         y = point.y + Math.sin(offsetAngle) * offset * side;
       } else {
         if (!middle.length) return null;
-        const index = middle[Math.floor(Math.random() * middle.length)];
+        const index = middle[Math.floor(rng() * middle.length)];
         shot = shots[index];
-        k = clamp(Math.round(apexes[index] * random(0.88, 1.1)), 1, shot.steps - 1);
+        k = clamp(Math.round(apexes[index] * rngRange(rng, 0.88, 1.1)), 1, shot.steps - 1);
         ({ x, y } = getShotPoint(shot, k));
       }
-      const obstacle = Obstacles.create(buildObstacleSpec(kind, x, y, params));
+      const obstacle = Obstacles.create(buildObstacleSpec(kind, x, y, params, rng));
       if (obstacle && isObstaclePlacementFair(obstacle, source, target, poses, shotsByPose)) return obstacle;
     }
     return null;
@@ -3108,13 +3128,13 @@
 
   let obstacleChecksLeft = OBSTACLE_CHECKS_PER_SPAWN;
 
-  function trySpawn(last, targetId, plan) {
+  function trySpawn(last, targetId, plan, rng) {
     for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt += 1) {
-      const candidate = sampleHoopCandidate(last, targetId, plan);
+      const candidate = sampleHoopCandidate(last, targetId, plan, rng);
       if (!isFairSpawn(last, candidate, plan)) continue;
       // An obstacle is placed last, off the verified shots; no clean spot means another candidate.
       if (plan.features.obstacle) {
-        candidate.obstacle = placeObstacle(last, candidate, plan);
+        candidate.obstacle = placeObstacle(last, candidate, plan, rng);
         if (!candidate.obstacle) continue;
       }
       return candidate;
@@ -3122,13 +3142,14 @@
     return null;
   }
 
-  function nextHoop() {
+  // Plans the next target from the run's rng.
+  function nextHoop(rng = runRandom.next) {
     const last = hoops[hoops.length - 1];
     const targetId = last.id + 1;
     obstacleChecksLeft = OBSTACLE_CHECKS_PER_SPAWN;
-    let transitionPlan = createTransitionPlan(last, targetId);
+    let transitionPlan = createTransitionPlan(last, targetId, rng);
     lastHoopSide = transitionPlan.direction;
-    let hoop = trySpawn(last, targetId, transitionPlan);
+    let hoop = trySpawn(last, targetId, transitionPlan, rng);
     // A plan that finds no fair spot gets one fresh plan before the plain fallback. An intro that
     // fails waits for the next hoop, so a stubborn intro can never starve the rest of the ladder.
     if (!hoop && (transitionPlan.intro || getFeatureList(transitionPlan.features).length)) {
@@ -3136,9 +3157,9 @@
         transitionHistory.introFailures.set(transitionPlan.intro, (transitionHistory.introFailures.get(transitionPlan.intro) || 0) + 1);
       }
       obstacleChecksLeft = OBSTACLE_CHECKS_RETRY;
-      transitionPlan = createTransitionPlan(last, targetId, { skipIntro: true });
+      transitionPlan = createTransitionPlan(last, targetId, rng, { skipIntro: true });
       lastHoopSide = transitionPlan.direction;
-      hoop = trySpawn(last, targetId, transitionPlan);
+      hoop = trySpawn(last, targetId, transitionPlan, rng);
     }
 
     if (!hoop) {
@@ -3146,7 +3167,7 @@
       const minX = WALL_INSET + HOOP_WALL_CLEARANCE;
       const maxX = WORLD_W - WALL_INSET - HOOP_WALL_CLEARANCE;
       const fallbackX = clamp(last.x + transitionPlan.direction * FALLBACK_HORIZONTAL_GAP, minX, maxX);
-      hoop = makeHoop(fallbackX, last.y - FALLBACK_VERTICAL_GAP, targetId, last, transitionPlan);
+      hoop = makeHoop(fallbackX, last.y - FALLBACK_VERTICAL_GAP, targetId, last, transitionPlan, rng);
     }
 
     commitTransitionHistory(transitionPlan);
@@ -4524,6 +4545,7 @@
         const source = flameTrail[Math.floor(random(0.4, 0.9) * (flameTrail.length - 1))];
         emitFlameLick(style, source.x, source.y);
       }
+      // Cosmetic: embers stay on Math.random so visuals never consume the run rng.
       if (budget > 1 && Math.random() < dt * style.embers * style.intensity) emitFlameEmber(style, origin.x, origin.y);
     }
     while (flameTrail.length && flameClock - flameTrail[flameTrail.length - 1].t > FLAME_TRAIL_LIFE) flameTrail.pop();
@@ -6872,6 +6894,7 @@
     } else if (name === "rim") {
       // Short, dull metal "tonk" in the wall thump's family; no long ring.
       const strength = clamp(Number(detail.strength) || 0, 0, 1);
+      // Cosmetic: sound variation stays on Math.random so audio never consumes the run rng.
       const base = voice.rim + Math.random() * 40;
       const level = 0.014 + strength * 0.034;
       playTone(base, 0.13, "triangle", level, 0, base * 0.96);
@@ -8997,6 +9020,7 @@
     if (!noiseBuffer) {
       noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
       const samples = noiseBuffer.getChannelData(0);
+      // Cosmetic: noise samples and offsets stay on Math.random so audio never consumes the run rng.
       for (let i = 0; i < samples.length; i += 1) samples[i] = Math.random() * 2 - 1;
     }
     const now = audioContext.currentTime + (delay || 0);
@@ -9138,8 +9162,14 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  // Cosmetic only (particles, shake): Math.random, so effects never change the hoop sequence.
   function random(min, max) {
     return min + Math.random() * (max - min);
+  }
+
+  // Gameplay ranges: drawn from the given rng (the run's, see runRandom).
+  function rngRange(rng, min, max) {
+    return min + rng() * (max - min);
   }
 
   window.addEventListener("resize", resize, { passive: true });

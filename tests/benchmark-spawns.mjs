@@ -4,11 +4,10 @@ import { readFileSync } from 'node:fs';
 import { loadGame } from './helpers/game-harness.mjs';
 
 const source = process.argv[2] ? readFileSync(process.argv[2], 'utf8') : undefined;
-const game = loadGame({ source });
+// Seeded harness: the run seed (or, for an older game.js, Math.random itself) repeats every run.
+const game = loadGame({ source, randomSeed: 0x12345678 });
 game.evaluate(`
   globalThis.benchmarkSpawns = function(count) {
-    let seed = 0x12345678;
-    Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
     const samples = [];
     const tiers = [0, 8, 15, 30, 50, 100, 500];
     Object.assign(transitionHistory, {

@@ -13,10 +13,8 @@ const P = loadProgression();
 
 // A quiet, seeded game: same spawns every run, no DOM side effects.
 function loadSeededGame(seed = 0x2545f491) {
-  const g = loadGame();
+  const g = loadGame({ randomSeed: seed });
   g.evaluate(`
-    let seed = ${seed};
-    Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
     playGameSound = () => {};
     showTip = () => {};
   `);
