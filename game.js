@@ -1584,6 +1584,7 @@
       wall: "Duvar",
       perfect: "Deliksiz",
       bounce: "Duvardan",
+      ricochet: "Sekme!",
       nice: "Güzel",
       newHighScore: "YENİ REKOR!"
     },
@@ -1798,6 +1799,7 @@
       wall: "Wall",
       perfect: "Perfect",
       bounce: "Bounce",
+      ricochet: "Ricochet!",
       nice: "Nice",
       newHighScore: "NEW HIGH SCORE!"
     }
@@ -1954,6 +1956,7 @@
     held: true,
     touchedHoop: false,
     touchedWall: false,
+    touchedObstacle: false,
     wallBounceCount: 0,
     lastSecondTimedShot: false,
     scoredHoopId: -1,
@@ -2311,6 +2314,7 @@
     ball.held = true;
     ball.touchedHoop = false;
     ball.touchedWall = false;
+    ball.touchedObstacle = false;
     ball.wallBounceCount = 0;
     ball.lastSecondTimedShot = false;
     ball.rotation = 0;
@@ -3446,6 +3450,7 @@
       ball.held = false;
       ball.touchedHoop = false;
       ball.touchedWall = false;
+      ball.touchedObstacle = false;
       ball.wallBounceCount = 0;
       ball.lastSecondTimedShot = isLastSecondTimedShotRelease();
       runShotCount = addSafeStat(runShotCount, 1);
@@ -3813,6 +3818,7 @@
     if (!hoop) return;
     const contact = Obstacles.collideBody(ball, ball.r, hoop.obstacle, simulationTime, dt);
     if (!contact) return;
+    ball.touchedObstacle = true;
     ball.x = contact.x;
     ball.y = contact.y;
     ball.vx = contact.vx;
@@ -4811,15 +4817,17 @@
     ball.scoredHoopId = hoop.id;
     const wasPerfect = !ball.touchedHoop;
     const usedWall = ball.touchedWall;
+    const usedObstacle = ball.touchedObstacle;
+    const usedBounce = usedWall || usedObstacle;
     swishStreak = wasPerfect ? swishStreak + 1 : 0;
     perfectChain = swishStreak;
     const perfectGain = wasPerfect ? Math.min(swishStreak + 1, 10) : 1;
-    const wallMultiplier = usedWall ? 2 : 1;
+    const bounceMultiplier = usedBounce ? 2 : 1;
     // Added after the multipliers: a high drop is worth one extra point, never doubled.
     const highArc = isHighArcBasket(hoop);
-    lastScoreGain = perfectGain * wallMultiplier + (highArc ? HIGH_ARC_BONUS : 0);
+    lastScoreGain = perfectGain * bounceMultiplier + (highArc ? HIGH_ARC_BONUS : 0);
     lastWasPerfect = wasPerfect;
-    lastWasBounce = usedWall;
+    lastWasBounce = usedBounce;
     lastWasHighArc = highArc;
     score += lastScoreGain;
     const ignited = wasPerfect && swishStreak === getFlameThreshold();
@@ -4856,16 +4864,16 @@
     const resultShake = wasPerfect
       ? SCORE_SHAKE.perfect + Math.min(swishStreak, 6) * SCORE_SHAKE.perStreak
       : SCORE_SHAKE.basket;
-    shake = Math.min(SCORE_SHAKE.max, resultShake + (usedWall ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
+    shake = Math.min(SCORE_SHAKE.max, resultShake + (usedBounce ? SCORE_SHAKE.wall : 0)) * (reduceMotion ? 0.35 : 1);
     if (wasPerfect) hitStopTimer = ignited ? HIT_STOP.ignite : HIT_STOP.perfect;
-    comboText = usedWall || wasPerfect || highArc ? 1.1 : 0.85;
+    comboText = usedBounce || wasPerfect || highArc ? 1.1 : 0.85;
     comboAnchor.x = hoop.x;
     comboAnchor.y = hoop.y;
-    scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain, highArc);
-    playGameSound("score", { perfect: wasPerfect, wall: usedWall, streak: swishStreak, highArc });
+    scoreFeedbackText = buildScoreFeedback(wasPerfect, usedWall, lastScoreGain, highArc, usedObstacle);
+    playGameSound("score", { perfect: wasPerfect, wall: usedBounce, streak: swishStreak, highArc });
     triggerHaptic(!wasPerfect ? 16 : swishStreak >= 3 ? [12, 30, 12, 30, 24] : [12, 40, 18], true);
     burst(hoop.x, hoop.y);
-    triggerHoopScoreEffect(hoop, { swish: wasPerfect, wall: usedWall });
+    triggerHoopScoreEffect(hoop, { swish: wasPerfect, wall: usedBounce });
     hoop.moving = false;
     hoop.turnType = null;
     hoop.baseRotation = 0;
@@ -4884,12 +4892,13 @@
     beginBallSettle(hoop);
   }
 
-  function buildScoreFeedback(wasPerfect, usedWall, gained, highArc) {
+  function buildScoreFeedback(wasPerfect, usedWall, gained, highArc, usedObstacle) {
     const parts = [];
     if (wasPerfect) parts.push(t("perfect"));
     if (usedWall) parts.push(t("bounce"));
+    if (usedObstacle && !usedWall) parts.push(t("ricochet"));
     if (highArc) parts.push(t("highArc"));
-    if (!wasPerfect && !usedWall && !highArc) parts.push(t("nice"));
+    if (!wasPerfect && !usedWall && !usedObstacle && !highArc) parts.push(t("nice"));
     parts.push("+" + gained);
     return parts.join(" · ");
   }
